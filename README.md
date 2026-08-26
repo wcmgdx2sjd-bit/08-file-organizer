@@ -17,7 +17,7 @@ The goal is to build a command-line program that organizes files into folders ba
 
 ## Planned Milestones
 
-1. List files in a selected directory.
+1. ✅ List files in a selected directory.
 2. Identify each file's extension.
 3. Map extensions into categories such as Documents, Images, Audio, Video, Archives, and Other.
 4. Preview planned moves without changing files.

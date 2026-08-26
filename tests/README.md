@@ -1,3 +1,3 @@
 # Tests
 
-Automated tests will be added as each File Organizer milestone is implemented.
+Milestone 1 has automated filesystem coverage. Add tests with every milestone.
