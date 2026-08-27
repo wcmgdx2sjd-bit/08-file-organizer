@@ -1,3 +1,3 @@
 # Tests
 
-Milestone 1 has automated filesystem coverage. Add tests with every milestone.
+Milestones 1 and 2 have automated filesystem coverage. Add tests with every milestone.

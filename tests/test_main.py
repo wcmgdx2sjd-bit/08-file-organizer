@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from main import list_files
+from main import file_extension, list_files
 
 
 class FileOrganizerTests(unittest.TestCase):
@@ -24,6 +24,17 @@ class FileOrganizerTests(unittest.TestCase):
         self.assertEqual(
             [path.name for path in files],
             ["alpha.py", "zebra.txt"],
+        )
+
+
+    def test_identifies_normalized_file_extension(self):
+        self.assertEqual(
+            file_extension(Path("REPORT.PDF")),
+            ".pdf",
+        )
+        self.assertEqual(
+            file_extension(Path("README")),
+            "",
         )
 
 

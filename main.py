@@ -3,6 +3,11 @@
 from pathlib import Path
 
 
+def file_extension(path: Path) -> str:
+    """Return the file extension normalized to lowercase."""
+    return Path(path).suffix.lower()
+
+
 def list_files(directory: Path) -> list[Path]:
     """Return direct child files sorted by name."""
     directory = Path(directory)
@@ -20,7 +25,7 @@ def list_files(directory: Path) -> list[Path]:
 def main() -> None:
     """Display the next implementation milestone."""
     print("File Organizer milestone 1 is complete.")
-    print("Next milestone: identify each file's extension.")
+    print("Next milestone: map extensions into file categories.")
 
 
 if __name__ == "__main__":
