@@ -28,6 +28,19 @@ def file_category(path: Path) -> str:
     return "Other"
 
 
+def plan_moves(directory: Path) -> list[tuple[Path, Path]]:
+    """Return proposed source and destination paths without moving files."""
+    directory = Path(directory)
+
+    return [
+        (
+            file_path,
+            directory / file_category(file_path) / file_path.name,
+        )
+        for file_path in list_files(directory)
+    ]
+
+
 def list_files(directory: Path) -> list[Path]:
     """Return direct child files sorted by name."""
     directory = Path(directory)
@@ -45,7 +58,7 @@ def list_files(directory: Path) -> list[Path]:
 def main() -> None:
     """Display the next implementation milestone."""
     print("File Organizer milestone 1 is complete.")
-    print("Next milestone: preview planned moves without changing files.")
+    print("Next milestone: create category folders when approved.")
 
 
 if __name__ == "__main__":

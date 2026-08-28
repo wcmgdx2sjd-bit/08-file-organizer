@@ -20,7 +20,7 @@ The goal is to build a command-line program that organizes files into folders ba
 1. ✅ List files in a selected directory.
 2. ✅ Identify each file's extension.
 3. ✅ Map extensions into categories such as Documents, Images, Audio, Video, Archives, and Other.
-4. Preview planned moves without changing files.
+4. ✅ Preview planned moves without changing files.
 5. Create category folders when needed.
 6. Move files safely while preventing name collisions.
 7. Add automated tests.

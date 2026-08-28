@@ -2,7 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from main import file_category, file_extension, list_files
+from main import (
+    file_category,
+    file_extension,
+    list_files,
+    plan_moves,
+)
 
 
 class FileOrganizerTests(unittest.TestCase):
@@ -55,6 +60,34 @@ class FileOrganizerTests(unittest.TestCase):
                     file_category(Path(filename)),
                     expected_category,
                 )
+
+
+    def test_previews_moves_without_changing_files(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            report = directory / "report.PDF"
+            photo = directory / "photo.jpg"
+            script = directory / "script.py"
+
+            for file_path in (report, photo, script):
+                file_path.write_text("sample", encoding="utf-8")
+
+            planned_moves = plan_moves(directory)
+
+            self.assertEqual(
+                planned_moves,
+                [
+                    (photo, directory / "Images" / "photo.jpg"),
+                    (report, directory / "Documents" / "report.PDF"),
+                    (script, directory / "Other" / "script.py"),
+                ],
+            )
+            self.assertTrue(report.is_file())
+            self.assertTrue(photo.is_file())
+            self.assertTrue(script.is_file())
+            self.assertFalse((directory / "Documents").exists())
+            self.assertFalse((directory / "Images").exists())
+            self.assertFalse((directory / "Other").exists())
 
 
 if __name__ == "__main__":
