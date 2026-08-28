@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from main import file_extension, list_files
+from main import file_category, file_extension, list_files
 
 
 class FileOrganizerTests(unittest.TestCase):
@@ -36,6 +36,25 @@ class FileOrganizerTests(unittest.TestCase):
             file_extension(Path("README")),
             "",
         )
+
+
+    def test_maps_files_into_categories(self):
+        expected_categories = {
+            "report.PDF": "Documents",
+            "photo.JPG": "Images",
+            "song.mp3": "Audio",
+            "movie.MP4": "Video",
+            "backup.zip": "Archives",
+            "README": "Other",
+            "script.py": "Other",
+        }
+
+        for filename, expected_category in expected_categories.items():
+            with self.subTest(filename=filename):
+                self.assertEqual(
+                    file_category(Path(filename)),
+                    expected_category,
+                )
 
 
 if __name__ == "__main__":
