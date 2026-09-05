@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from main import (
+    create_category_folders,
     file_category,
     file_extension,
     list_files,
@@ -88,6 +89,58 @@ class FileOrganizerTests(unittest.TestCase):
             self.assertFalse((directory / "Documents").exists())
             self.assertFalse((directory / "Images").exists())
             self.assertFalse((directory / "Other").exists())
+
+
+    def test_creates_category_folders_only_after_approval(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            report = directory / "report.pdf"
+            photo = directory / "photo.jpg"
+            script = directory / "script.py"
+
+            for file_path in (report, photo, script):
+                file_path.write_text("sample", encoding="utf-8")
+
+            existing_images = directory / "Images"
+            existing_images.mkdir()
+            keep_file = existing_images / "keep.txt"
+            keep_file.write_text("keep", encoding="utf-8")
+
+            planned_moves = plan_moves(directory)
+
+            not_created = create_category_folders(
+                planned_moves,
+                approved=False,
+            )
+
+            self.assertEqual(not_created, [])
+            self.assertFalse((directory / "Documents").exists())
+            self.assertFalse((directory / "Other").exists())
+
+            folders = create_category_folders(
+                planned_moves,
+                approved=True,
+            )
+
+            self.assertEqual(
+                folders,
+                [
+                    directory / "Documents",
+                    directory / "Images",
+                    directory / "Other",
+                ],
+            )
+            self.assertTrue((directory / "Documents").is_dir())
+            self.assertTrue((directory / "Images").is_dir())
+            self.assertTrue((directory / "Other").is_dir())
+            self.assertEqual(
+                keep_file.read_text(encoding="utf-8"),
+                "keep",
+            )
+            self.assertTrue(report.is_file())
+            self.assertTrue(photo.is_file())
+            self.assertTrue(script.is_file())
+
 
 
 if __name__ == "__main__":

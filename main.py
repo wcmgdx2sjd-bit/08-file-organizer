@@ -28,6 +28,41 @@ def file_category(path: Path) -> str:
     return "Other"
 
 
+def create_category_folders(
+    planned_moves: list[tuple[Path, Path]],
+    *,
+    approved: bool,
+) -> list[Path]:
+    """Create planned category folders only after explicit approval."""
+    if approved is not True:
+        return []
+
+    folders = set()
+
+    for source, destination in planned_moves:
+        source = Path(source)
+        destination = Path(destination)
+        category_folder = destination.parent
+
+        if category_folder.parent != source.parent:
+            raise ValueError(
+                "planned destination must stay inside "
+                "the source directory."
+            )
+
+        folders.add(category_folder)
+
+    ordered_folders = sorted(
+        folders,
+        key=lambda folder: folder.name.casefold(),
+    )
+
+    for folder in ordered_folders:
+        folder.mkdir(exist_ok=True)
+
+    return ordered_folders
+
+
 def plan_moves(directory: Path) -> list[tuple[Path, Path]]:
     """Return proposed source and destination paths without moving files."""
     directory = Path(directory)
