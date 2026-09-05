@@ -143,5 +143,29 @@ class FileOrganizerTests(unittest.TestCase):
 
 
 
+    def test_rejects_category_folder_outside_source_directory(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            source = directory / "report.pdf"
+            source.write_text("sample", encoding="utf-8")
+            outside = (
+                directory.parent
+                / f"{directory.name}-outside"
+            )
+            unsafe_destination = outside / "report.pdf"
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "must stay inside",
+            ):
+                create_category_folders(
+                    [(source, unsafe_destination)],
+                    approved=True,
+                )
+
+            self.assertFalse(outside.exists())
+
+
+
 if __name__ == "__main__":
     unittest.main()

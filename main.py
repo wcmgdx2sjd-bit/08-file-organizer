@@ -92,8 +92,8 @@ def list_files(directory: Path) -> list[Path]:
 
 def main() -> None:
     """Display the next implementation milestone."""
-    print("File Organizer milestone 1 is complete.")
-    print("Next milestone: create category folders when approved.")
+    print("File Organizer milestone 5 is complete.")
+    print("Next milestone: move files safely without overwriting.")
 
 
 if __name__ == "__main__":
