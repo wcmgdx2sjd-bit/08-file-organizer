@@ -7,6 +7,7 @@ from main import (
     file_category,
     file_extension,
     list_files,
+    move_files,
     plan_moves,
 )
 
@@ -164,6 +165,101 @@ class FileOrganizerTests(unittest.TestCase):
                 )
 
             self.assertFalse(outside.exists())
+
+
+
+    def test_moves_files_only_after_explicit_approval(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            report = directory / "report.pdf"
+            photo = directory / "photo.jpg"
+            report.write_text("report contents", encoding="utf-8")
+            photo.write_text("photo contents", encoding="utf-8")
+
+            planned_moves = plan_moves(directory)
+            create_category_folders(
+                planned_moves,
+                approved=True,
+            )
+
+            not_moved = move_files(
+                planned_moves,
+                approved=False,
+            )
+
+            self.assertEqual(not_moved, [])
+            self.assertTrue(report.is_file())
+            self.assertTrue(photo.is_file())
+
+            moved = move_files(
+                planned_moves,
+                approved=True,
+            )
+
+            report_destination = (
+                directory / "Documents" / "report.pdf"
+            )
+            photo_destination = (
+                directory / "Images" / "photo.jpg"
+            )
+
+            self.assertEqual(
+                moved,
+                [photo_destination, report_destination],
+            )
+            self.assertFalse(report.exists())
+            self.assertFalse(photo.exists())
+            self.assertEqual(
+                report_destination.read_text(encoding="utf-8"),
+                "report contents",
+            )
+            self.assertEqual(
+                photo_destination.read_text(encoding="utf-8"),
+                "photo contents",
+            )
+
+
+
+    def test_collision_blocks_every_planned_move(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            photo = directory / "photo.jpg"
+            report = directory / "report.pdf"
+            photo.write_text("new photo", encoding="utf-8")
+            report.write_text("new report", encoding="utf-8")
+
+            planned_moves = plan_moves(directory)
+            create_category_folders(
+                planned_moves,
+                approved=True,
+            )
+
+            existing_report = (
+                directory / "Documents" / "report.pdf"
+            )
+            existing_report.write_text(
+                "existing report",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                FileExistsError,
+                "destination already exists",
+            ):
+                move_files(
+                    planned_moves,
+                    approved=True,
+                )
+
+            self.assertTrue(photo.is_file())
+            self.assertTrue(report.is_file())
+            self.assertFalse(
+                (directory / "Images" / "photo.jpg").exists()
+            )
+            self.assertEqual(
+                existing_report.read_text(encoding="utf-8"),
+                "existing report",
+            )
 
 
 

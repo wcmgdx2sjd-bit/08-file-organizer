@@ -63,6 +63,61 @@ def create_category_folders(
     return ordered_folders
 
 
+def move_files(
+    planned_moves: list[tuple[Path, Path]],
+    *,
+    approved: bool,
+) -> list[Path]:
+    """Move planned files only after approval and a safe preflight."""
+    if approved is not True:
+        return []
+
+    validated_moves = []
+    destinations = set()
+
+    for source, destination in planned_moves:
+        source = Path(source)
+        destination = Path(destination)
+
+        if destination.parent.parent != source.parent:
+            raise ValueError(
+                "planned destination must stay inside "
+                "the source directory."
+            )
+
+        if not source.is_file():
+            raise FileNotFoundError(
+                f"source file does not exist: {source}"
+            )
+
+        if not destination.parent.is_dir():
+            raise FileNotFoundError(
+                f"category folder does not exist: "
+                f"{destination.parent}"
+            )
+
+        if destination.exists():
+            raise FileExistsError(
+                f"destination already exists: {destination}"
+            )
+
+        if destination in destinations:
+            raise FileExistsError(
+                f"duplicate destination planned: {destination}"
+            )
+
+        validated_moves.append((source, destination))
+        destinations.add(destination)
+
+    moved = []
+
+    for source, destination in validated_moves:
+        source.rename(destination)
+        moved.append(destination)
+
+    return moved
+
+
 def plan_moves(directory: Path) -> list[tuple[Path, Path]]:
     """Return proposed source and destination paths without moving files."""
     directory = Path(directory)
@@ -92,8 +147,8 @@ def list_files(directory: Path) -> list[Path]:
 
 def main() -> None:
     """Display the next implementation milestone."""
-    print("File Organizer milestone 5 is complete.")
-    print("Next milestone: move files safely without overwriting.")
+    print("File Organizer milestone 6 is complete.")
+    print("Next milestone: add complete automated filesystem coverage.")
 
 
 if __name__ == "__main__":

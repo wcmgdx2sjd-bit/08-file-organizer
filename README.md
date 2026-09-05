@@ -22,7 +22,7 @@ The goal is to build a command-line program that organizes files into folders ba
 3. ✅ Map extensions into categories such as Documents, Images, Audio, Video, Archives, and Other.
 4. ✅ Preview planned moves without changing files.
 5. ✅ Create category folders when explicitly approved.
-6. Move files safely while preventing name collisions.
+6. ✅ Move files safely while preventing name collisions.
 7. Add automated tests.
 
 ## Safety Rules
