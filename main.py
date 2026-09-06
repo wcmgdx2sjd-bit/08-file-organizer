@@ -1,5 +1,7 @@
 """Project 08: build a safe command-line file organizer."""
 
+import argparse
+import sys
 from pathlib import Path
 
 
@@ -145,10 +147,58 @@ def list_files(directory: Path) -> list[Path]:
     )
 
 
+def parse_args(arguments=None):
+    """Parse safe File Organizer command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Preview file organization or apply it explicitly."
+        )
+    )
+    parser.add_argument(
+        "directory",
+        type=Path,
+        help="Directory containing files to organize.",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Create category folders and move files.",
+    )
+    return parser.parse_args(arguments)
+
+
+def run(arguments, output=sys.stdout) -> int:
+    """Preview planned moves or apply them with explicit approval."""
+    directory = Path(arguments.directory)
+    planned_moves = plan_moves(directory)
+
+    for source, destination in planned_moves:
+        relative_destination = destination.relative_to(directory)
+        action = "MOVE" if arguments.apply else "PREVIEW"
+        print(
+            f"{action}: {source.name} -> {relative_destination}",
+            file=output,
+        )
+
+    if not arguments.apply:
+        print(
+            "No files were changed. Use --apply to approve.",
+            file=output,
+        )
+        return 0
+
+    create_category_folders(planned_moves, approved=True)
+    move_files(planned_moves, approved=True)
+    print(
+        f"Moved {len(planned_moves)} file(s).",
+        file=output,
+    )
+    return 0
+
+
 def main() -> None:
-    """Display the next implementation milestone."""
-    print("File Organizer milestone 6 is complete.")
-    print("Next milestone: add complete automated filesystem coverage.")
+    """Run the File Organizer command-line interface."""
+    raise SystemExit(run(parse_args()))
 
 
 if __name__ == "__main__":

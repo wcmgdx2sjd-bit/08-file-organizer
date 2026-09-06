@@ -2,7 +2,7 @@
 
 Project 08 of Brandon's Python learning journey.
 
-The goal is to build a command-line program that organizes files into folders based on file type. This repository begins with a safe scaffold so each feature can be implemented and understood incrementally.
+This command-line program organizes files into folders based on file type. It previews every planned move by default and requires an explicit `--apply` option before changing files.
 
 ## Learning Goals
 
@@ -15,15 +15,15 @@ The goal is to build a command-line program that organizes files into folders ba
 - Write automated tests for filesystem behavior
 - Practice a consistent Git and GitHub workflow
 
-## Planned Milestones
+## Completed Milestones
 
 1. ✅ List files in a selected directory.
 2. ✅ Identify each file's extension.
-3. ✅ Map extensions into categories such as Documents, Images, Audio, Video, Archives, and Other.
+3. ✅ Map extensions into Documents, Images, Audio, Video, Archives, and Other.
 4. ✅ Preview planned moves without changing files.
-5. ✅ Create category folders when explicitly approved.
+5. ✅ Create category folders only after explicit approval.
 6. ✅ Move files safely while preventing name collisions.
-7. Add automated tests.
+7. ✅ Add a preview-first command-line interface and complete automated coverage.
 
 ## Safety Rules
 
@@ -36,19 +36,41 @@ The goal is to build a command-line program that organizes files into folders ba
 ## Requirements
 
 - Python 3.10 or newer
-- No third-party packages are required for the initial version
+- No third-party packages required
 
-## Run the Scaffold
+## Current Verified Status
+
+All seven milestones are complete, with 10 automated tests covering preview behavior, explicit approval, folder creation, file movement, and collision safety.
+
+## Preview Changes
+
+Preview mode does not change files:
 
 ```bash
-python3 main.py
+python3 main.py /path/to/test-directory
 ```
 
-Windows PowerShell users can run:
+Windows PowerShell:
 
 ```powershell
-python main.py
+python main.py "C:\path\to\test-directory"
 ```
+
+## Apply Changes
+
+After reviewing the preview, explicitly approve the operation:
+
+```bash
+python3 main.py /path/to/test-directory --apply
+```
+
+Windows PowerShell:
+
+```powershell
+python main.py "C:\path\to\test-directory" --apply
+```
+
+Always test with disposable sample files before organizing important data.
 
 ## Repository Location
 

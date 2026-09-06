@@ -1,3 +1,6 @@
+import io
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,7 +11,9 @@ from main import (
     file_extension,
     list_files,
     move_files,
+    parse_args,
     plan_moves,
+    run,
 )
 
 
@@ -261,6 +266,83 @@ class FileOrganizerTests(unittest.TestCase):
                 "existing report",
             )
 
+
+
+    def test_cli_previews_moves_without_changing_files(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            report = directory / "report.pdf"
+            photo = directory / "photo.jpg"
+            report.write_text("report", encoding="utf-8")
+            photo.write_text("photo", encoding="utf-8")
+            output = io.StringIO()
+
+            arguments = parse_args([str(directory)])
+            exit_code = run(arguments, output=output)
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn(
+                "PREVIEW: photo.jpg -> Images/photo.jpg",
+                output.getvalue(),
+            )
+            self.assertIn(
+                "PREVIEW: report.pdf -> Documents/report.pdf",
+                output.getvalue(),
+            )
+            self.assertIn(
+                "No files were changed. Use --apply to approve.",
+                output.getvalue(),
+            )
+            self.assertTrue(photo.is_file())
+            self.assertTrue(report.is_file())
+            self.assertFalse((directory / "Images").exists())
+            self.assertFalse((directory / "Documents").exists())
+
+
+    def test_cli_apply_moves_files_after_explicit_approval(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            report = directory / "report.pdf"
+            photo = directory / "photo.jpg"
+            report.write_text("report", encoding="utf-8")
+            photo.write_text("photo", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--apply",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertIn(
+                "MOVE: photo.jpg -> Images/photo.jpg",
+                result.stdout,
+            )
+            self.assertIn(
+                "MOVE: report.pdf -> Documents/report.pdf",
+                result.stdout,
+            )
+            self.assertIn("Moved 2 file(s).", result.stdout)
+            self.assertFalse(photo.exists())
+            self.assertFalse(report.exists())
+            self.assertEqual(
+                (
+                    directory / "Images" / "photo.jpg"
+                ).read_text(encoding="utf-8"),
+                "photo",
+            )
+            self.assertEqual(
+                (
+                    directory / "Documents" / "report.pdf"
+                ).read_text(encoding="utf-8"),
+                "report",
+            )
 
 
 if __name__ == "__main__":
