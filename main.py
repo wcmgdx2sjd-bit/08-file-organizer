@@ -65,15 +65,10 @@ def create_category_folders(
     return ordered_folders
 
 
-def move_files(
+def preflight_moves(
     planned_moves: list[tuple[Path, Path]],
-    *,
-    approved: bool,
-) -> list[Path]:
-    """Move planned files only after approval and a safe preflight."""
-    if approved is not True:
-        return []
-
+) -> list[tuple[Path, Path]]:
+    """Validate every planned move before changing the filesystem."""
     validated_moves = []
     destinations = set()
 
@@ -92,12 +87,6 @@ def move_files(
                 f"source file does not exist: {source}"
             )
 
-        if not destination.parent.is_dir():
-            raise FileNotFoundError(
-                f"category folder does not exist: "
-                f"{destination.parent}"
-            )
-
         if destination.exists():
             raise FileExistsError(
                 f"destination already exists: {destination}"
@@ -110,6 +99,27 @@ def move_files(
 
         validated_moves.append((source, destination))
         destinations.add(destination)
+
+    return validated_moves
+
+
+def move_files(
+    planned_moves: list[tuple[Path, Path]],
+    *,
+    approved: bool,
+) -> list[Path]:
+    """Move preflighted files only after explicit approval."""
+    if approved is not True:
+        return []
+
+    validated_moves = preflight_moves(planned_moves)
+
+    for _, destination in validated_moves:
+        if not destination.parent.is_dir():
+            raise FileNotFoundError(
+                f"category folder does not exist: "
+                f"{destination.parent}"
+            )
 
     moved = []
 
@@ -167,9 +177,28 @@ def parse_args(arguments=None):
     return parser.parse_args(arguments)
 
 
-def run(arguments, output=sys.stdout) -> int:
+def run(
+    arguments,
+    output=sys.stdout,
+    error_output=sys.stderr,
+) -> int:
     """Preview planned moves or apply them with explicit approval."""
     directory = Path(arguments.directory)
+
+    if not directory.exists():
+        print(
+            f"Error: directory does not exist: {directory}",
+            file=error_output,
+        )
+        return 1
+
+    if not directory.is_dir():
+        print(
+            f"Error: path is not a directory: {directory}",
+            file=error_output,
+        )
+        return 1
+
     planned_moves = plan_moves(directory)
 
     for source, destination in planned_moves:
@@ -187,8 +216,17 @@ def run(arguments, output=sys.stdout) -> int:
         )
         return 0
 
-    create_category_folders(planned_moves, approved=True)
-    move_files(planned_moves, approved=True)
+    try:
+        preflight_moves(planned_moves)
+        create_category_folders(planned_moves, approved=True)
+        move_files(planned_moves, approved=True)
+    except (OSError, ValueError) as error:
+        print(
+            f"Error: {error}",
+            file=error_output,
+        )
+        return 1
+
     print(
         f"Moved {len(planned_moves)} file(s).",
         file=output,

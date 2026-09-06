@@ -345,5 +345,118 @@ class FileOrganizerTests(unittest.TestCase):
             )
 
 
+    def test_cli_reports_missing_directory_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            missing_directory = (
+                Path(temporary_directory) / "does-not-exist"
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(missing_directory),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.stdout, "")
+            self.assertIn(
+                "Error: directory does not exist:",
+                result.stderr,
+            )
+            self.assertIn(
+                str(missing_directory),
+                result.stderr,
+            )
+            self.assertNotIn("Traceback", result.stderr)
+
+
+    def test_cli_rejects_file_path_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            file_path = Path(temporary_directory) / "report.pdf"
+            file_path.write_text("report", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(file_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.stdout, "")
+            self.assertIn(
+                "Error: path is not a directory:",
+                result.stderr,
+            )
+            self.assertIn(str(file_path), result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(
+                file_path.read_text(encoding="utf-8"),
+                "report",
+            )
+
+
+    def test_cli_reports_collision_without_moving_or_traceback(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            source = directory / "report.pdf"
+            photo = directory / "photo.jpg"
+            source.write_text("new report", encoding="utf-8")
+            photo.write_text("new photo", encoding="utf-8")
+
+            documents = directory / "Documents"
+            documents.mkdir()
+            destination = documents / "report.pdf"
+            destination.write_text(
+                "existing report",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--apply",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "MOVE: report.pdf -> Documents/report.pdf",
+                result.stdout,
+            )
+            self.assertIn(
+                "Error: destination already exists:",
+                result.stderr,
+            )
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(
+                source.read_text(encoding="utf-8"),
+                "new report",
+            )
+            self.assertEqual(
+                photo.read_text(encoding="utf-8"),
+                "new photo",
+            )
+            self.assertEqual(
+                destination.read_text(encoding="utf-8"),
+                "existing report",
+            )
+            self.assertFalse((directory / "Images").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

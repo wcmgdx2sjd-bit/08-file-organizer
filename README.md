@@ -40,7 +40,7 @@ This command-line program organizes files into folders based on file type. It pr
 
 ## Current Verified Status
 
-All seven milestones are complete, with 10 automated tests covering preview behavior, explicit approval, folder creation, file movement, and collision safety.
+All seven milestones are complete, with 13 automated tests covering preview behavior, explicit approval, friendly input errors, atomic collision preflight, folder creation, and safe file movement.
 
 ## Preview Changes
 
