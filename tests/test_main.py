@@ -1,3 +1,4 @@
+import importlib
 import io
 import subprocess
 import sys
@@ -5,15 +6,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from main import (
+from main import parse_args, run
+from organizer import (
     create_category_folders,
     file_category,
     file_extension,
     list_files,
     move_files,
-    parse_args,
     plan_moves,
-    run,
 )
 
 
@@ -456,6 +456,46 @@ class FileOrganizerTests(unittest.TestCase):
                 "existing report",
             )
             self.assertFalse((directory / "Images").exists())
+
+
+    def test_core_operations_are_exposed_by_organizer_module(self):
+        organizer = importlib.import_module("organizer")
+
+        expected_operations = (
+            "file_extension",
+            "file_category",
+            "list_files",
+            "plan_moves",
+            "create_category_folders",
+            "preflight_moves",
+            "move_files",
+        )
+
+        for operation in expected_operations:
+            with self.subTest(operation=operation):
+                self.assertTrue(
+                    callable(getattr(organizer, operation, None))
+                )
+
+
+    def test_main_remains_a_thin_cli_module(self):
+        source = (
+            Path(__file__).parents[1] / "main.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("from organizer import (", source)
+
+        for operation in (
+            "file_extension",
+            "file_category",
+            "list_files",
+            "plan_moves",
+            "create_category_folders",
+            "preflight_moves",
+            "move_files",
+        ):
+            with self.subTest(operation=operation):
+                self.assertNotIn(f"def {operation}(", source)
 
 
 if __name__ == "__main__":

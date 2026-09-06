@@ -40,7 +40,7 @@ This command-line program organizes files into folders based on file type. It pr
 
 ## Current Verified Status
 
-All seven milestones are complete, with 13 automated tests covering preview behavior, explicit approval, friendly input errors, atomic collision preflight, folder creation, and safe file movement.
+All seven milestones are complete, with 15 automated tests. Reusable file operations live in `organizer.py`, while `main.py` is a thin command-line interface. Coverage includes preview behavior, explicit approval, friendly input errors, atomic collision preflight, folder creation, and safe file movement.
 
 ## Preview Changes
 
