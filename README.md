@@ -24,6 +24,7 @@ This command-line program organizes files into folders based on file type. It pr
 5. ✅ Create category folders only after explicit approval.
 6. ✅ Move files safely while preventing name collisions.
 7. ✅ Add a preview-first command-line interface and complete automated coverage.
+8. ✅ Add optional recursive organization with nested-folder collision safety.
 
 ## Safety Rules
 
@@ -31,6 +32,7 @@ This command-line program organizes files into folders based on file type. It pr
 - Never overwrite an existing file.
 - Ignore directories and process files only.
 - Preview actions before applying them.
+- Skip existing category folders during recursive scans.
 - Test with disposable sample files first.
 
 ## Requirements
@@ -40,7 +42,7 @@ This command-line program organizes files into folders based on file type. It pr
 
 ## Current Verified Status
 
-All seven milestones are complete, with 15 automated tests. Reusable file operations live in `organizer.py`, while `main.py` is a thin command-line interface. Coverage includes preview behavior, explicit approval, friendly input errors, atomic collision preflight, folder creation, and safe file movement.
+All eight milestones are complete, with 20 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, and atomic collision safety.
 
 ## Preview Changes
 
@@ -55,6 +57,22 @@ Windows PowerShell:
 ```powershell
 python main.py "C:\path\to\test-directory"
 ```
+
+## Include Nested Folders
+
+Use `--recursive` to preview files inside nested folders:
+
+```bash
+python3 main.py /path/to/test-directory --recursive
+```
+
+After reviewing the preview, apply it explicitly:
+
+```bash
+python3 main.py /path/to/test-directory --recursive --apply
+```
+
+Each file is organized beside its current location. Existing category folders are skipped, and one collision blocks every planned move.
 
 ## Apply Changes
 

@@ -498,5 +498,227 @@ class FileOrganizerTests(unittest.TestCase):
                 self.assertNotIn(f"def {operation}(", source)
 
 
+    def test_recursive_preview_plans_nested_files_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            nested = directory / "client"
+            nested.mkdir()
+
+            report = nested / "report.pdf"
+            photo = nested / "photo.jpg"
+            report.write_text("report", encoding="utf-8")
+            photo.write_text("photo", encoding="utf-8")
+
+            planned_moves = plan_moves(
+                directory,
+                recursive=True,
+            )
+
+            self.assertEqual(
+                planned_moves,
+                [
+                    (
+                        photo,
+                        nested / "Images" / "photo.jpg",
+                    ),
+                    (
+                        report,
+                        nested / "Documents" / "report.pdf",
+                    ),
+                ],
+            )
+            self.assertTrue(photo.is_file())
+            self.assertTrue(report.is_file())
+            self.assertFalse((nested / "Images").exists())
+            self.assertFalse((nested / "Documents").exists())
+
+
+    def test_recursive_preview_skips_existing_category_folders(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            client = directory / "client"
+            documents = client / "Documents"
+            images = directory / "Images"
+            documents.mkdir(parents=True)
+            images.mkdir()
+
+            unorganized = client / "notes.txt"
+            organized_document = documents / "report.pdf"
+            organized_image = images / "photo.jpg"
+
+            unorganized.write_text("notes", encoding="utf-8")
+            organized_document.write_text(
+                "report",
+                encoding="utf-8",
+            )
+            organized_image.write_text(
+                "photo",
+                encoding="utf-8",
+            )
+
+            planned_moves = plan_moves(
+                directory,
+                recursive=True,
+            )
+
+            self.assertEqual(
+                planned_moves,
+                [
+                    (
+                        unorganized,
+                        client / "Documents" / "notes.txt",
+                    ),
+                ],
+            )
+            self.assertTrue(organized_document.is_file())
+            self.assertTrue(organized_image.is_file())
+
+
+    def test_cli_recursive_option_previews_nested_files(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            client = directory / "client"
+            client.mkdir()
+            report = client / "report.pdf"
+            report.write_text("report", encoding="utf-8")
+            output = io.StringIO()
+
+            arguments = parse_args([
+                str(directory),
+                "--recursive",
+            ])
+            exit_code = run(arguments, output=output)
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn(
+                (
+                    "PREVIEW: client/report.pdf -> "
+                    "client/Documents/report.pdf"
+                ),
+                output.getvalue(),
+            )
+            self.assertIn(
+                "No files were changed. Use --apply to approve.",
+                output.getvalue(),
+            )
+            self.assertTrue(report.is_file())
+            self.assertFalse(
+                (client / "Documents").exists()
+            )
+
+
+    def test_cli_recursive_apply_moves_nested_files_safely(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            client = directory / "client"
+            project = directory / "project"
+            client.mkdir()
+            project.mkdir()
+
+            report = client / "report.pdf"
+            photo = project / "photo.jpg"
+            report.write_text("report", encoding="utf-8")
+            photo.write_text("photo", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--recursive",
+                    "--apply",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertIn(
+                (
+                    "MOVE: client/report.pdf -> "
+                    "client/Documents/report.pdf"
+                ),
+                result.stdout,
+            )
+            self.assertIn(
+                (
+                    "MOVE: project/photo.jpg -> "
+                    "project/Images/photo.jpg"
+                ),
+                result.stdout,
+            )
+            self.assertIn("Moved 2 file(s).", result.stdout)
+            self.assertEqual(
+                (
+                    client / "Documents" / "report.pdf"
+                ).read_text(encoding="utf-8"),
+                "report",
+            )
+            self.assertEqual(
+                (
+                    project / "Images" / "photo.jpg"
+                ).read_text(encoding="utf-8"),
+                "photo",
+            )
+            self.assertFalse(report.exists())
+            self.assertFalse(photo.exists())
+
+
+    def test_recursive_collision_blocks_all_nested_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            client = directory / "client"
+            project = directory / "project"
+            documents = client / "Documents"
+            client.mkdir()
+            project.mkdir()
+            documents.mkdir()
+
+            report = client / "report.pdf"
+            photo = project / "photo.jpg"
+            destination = documents / "report.pdf"
+
+            report.write_text("new report", encoding="utf-8")
+            photo.write_text("new photo", encoding="utf-8")
+            destination.write_text(
+                "existing report",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--recursive",
+                    "--apply",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "Error: destination already exists:",
+                result.stderr,
+            )
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(
+                report.read_text(encoding="utf-8"),
+                "new report",
+            )
+            self.assertEqual(
+                photo.read_text(encoding="utf-8"),
+                "new photo",
+            )
+            self.assertEqual(
+                destination.read_text(encoding="utf-8"),
+                "existing report",
+            )
+            self.assertFalse((project / "Images").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

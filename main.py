@@ -30,6 +30,14 @@ def parse_args(arguments=None):
         action="store_true",
         help="Create category folders and move files.",
     )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help=(
+            "Include nested folders while skipping existing "
+            "category folders."
+        ),
+    )
     return parser.parse_args(arguments)
 
 
@@ -55,13 +63,17 @@ def run(
         )
         return 1
 
-    planned_moves = plan_moves(directory)
+    planned_moves = plan_moves(
+        directory,
+        recursive=arguments.recursive,
+    )
 
     for source, destination in planned_moves:
+        relative_source = source.relative_to(directory)
         relative_destination = destination.relative_to(directory)
         action = "MOVE" if arguments.apply else "PREVIEW"
         print(
-            f"{action}: {source.name} -> {relative_destination}",
+            f"{action}: {relative_source} -> {relative_destination}",
             file=output,
         )
 

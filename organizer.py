@@ -128,28 +128,55 @@ def move_files(
     return moved
 
 
-def plan_moves(directory: Path) -> list[tuple[Path, Path]]:
+def plan_moves(
+    directory: Path,
+    *,
+    recursive: bool = False,
+) -> list[tuple[Path, Path]]:
     """Return proposed source and destination paths without moving files."""
     directory = Path(directory)
 
     return [
         (
             file_path,
-            directory / file_category(file_path) / file_path.name,
+            file_path.parent
+            / file_category(file_path)
+            / file_path.name,
         )
-        for file_path in list_files(directory)
+        for file_path in list_files(
+            directory,
+            recursive=recursive,
+        )
     ]
 
 
-def list_files(directory: Path) -> list[Path]:
-    """Return direct child files sorted by name."""
+def list_files(
+    directory: Path,
+    *,
+    recursive: bool = False,
+) -> list[Path]:
+    """Return eligible files sorted by their relative paths."""
     directory = Path(directory)
+    category_names = set(extension_categories) | {"Other"}
+    candidates = (
+        directory.rglob("*")
+        if recursive
+        else directory.iterdir()
+    )
 
     return sorted(
         (
             entry
-            for entry in directory.iterdir()
-            if entry.is_file()
+            for entry in candidates
+            if (
+                entry.is_file()
+                and not any(
+                    part in category_names
+                    for part in entry.relative_to(directory).parts[:-1]
+                )
+            )
         ),
-        key=lambda entry: entry.name.casefold(),
+        key=lambda entry: (
+            entry.relative_to(directory).as_posix().casefold()
+        ),
     )
