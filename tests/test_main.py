@@ -750,6 +750,9 @@ class FileOrganizerTests(unittest.TestCase):
                 {
                     "receipt_version": 1,
                     "directory": str(directory.resolve()),
+                    "created_directories": [
+                        "client/Documents",
+                    ],
                     "moves": [
                         {
                             "source": "client/report.pdf",
@@ -804,6 +807,7 @@ class FileOrganizerTests(unittest.TestCase):
                 {
                     "receipt_version": 1,
                     "directory": str(directory.resolve()),
+                    "created_directories": ["Documents"],
                     "moves": [
                         {
                             "source": "report.pdf",
@@ -1396,6 +1400,99 @@ class FileOrganizerTests(unittest.TestCase):
             )
             self.assertFalse((directory / "Documents").exists())
             self.assertFalse(receipt_path.exists())
+
+
+    def test_receipt_records_only_category_folders_to_create(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            client = directory / "client"
+            project = directory / "project"
+            existing_images = project / "Images"
+            client.mkdir()
+            existing_images.mkdir(parents=True)
+
+            report = client / "report.pdf"
+            photo = project / "photo.jpg"
+            report.write_text("report", encoding="utf-8")
+            photo.write_text("photo", encoding="utf-8")
+
+            receipt = build_move_receipt(
+                directory,
+                [
+                    (
+                        report,
+                        client / "Documents" / "report.pdf",
+                    ),
+                    (
+                        photo,
+                        existing_images / "photo.jpg",
+                    ),
+                ],
+            )
+
+            self.assertEqual(
+                receipt["created_directories"],
+                ["client/Documents"],
+            )
+            self.assertTrue(existing_images.is_dir())
+            self.assertFalse((client / "Documents").exists())
+
+
+    def test_undo_removes_only_created_empty_category_folders(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            client = directory / "client"
+            project = directory / "project"
+            existing_images = project / "Images"
+            client.mkdir()
+            existing_images.mkdir(parents=True)
+
+            report = client / "report.pdf"
+            photo = project / "photo.jpg"
+            receipt_path = directory / "move-receipt.json"
+            report.write_text("report", encoding="utf-8")
+            photo.write_text("photo", encoding="utf-8")
+
+            organize_result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--recursive",
+                    "--apply",
+                    "--receipt",
+                    str(receipt_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(organize_result.returncode, 0)
+
+            created_documents = client / "Documents"
+            self.assertTrue(created_documents.is_dir())
+            self.assertTrue(existing_images.is_dir())
+
+            undo_result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                    "--apply",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(undo_result.returncode, 0)
+            self.assertEqual(undo_result.stderr, "")
+            self.assertTrue(report.is_file())
+            self.assertTrue(photo.is_file())
+            self.assertFalse(created_documents.exists())
+            self.assertTrue(existing_images.is_dir())
+            self.assertTrue(receipt_path.is_file())
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from organizer import (
     create_category_folders,
     move_files,
     plan_moves,
+    plan_undo_directories,
     plan_undo_moves,
     preflight_moves,
     undo_files,
@@ -116,6 +117,7 @@ def run(
 
         try:
             undo_moves = plan_undo_moves(receipt)
+            undo_directories = plan_undo_directories(receipt)
         except ValueError as error:
             print(
                 f"Error: {error}",
@@ -154,6 +156,13 @@ def run(
                 file=error_output,
             )
             return 1
+
+        for created_directory in undo_directories:
+            if (
+                created_directory.is_dir()
+                and not any(created_directory.iterdir())
+            ):
+                created_directory.rmdir()
 
         print(
             f"Restored {len(undo_moves)} file(s).",
