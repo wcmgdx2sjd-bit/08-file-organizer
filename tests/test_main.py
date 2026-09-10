@@ -1495,5 +1495,115 @@ class FileOrganizerTests(unittest.TestCase):
             self.assertTrue(receipt_path.is_file())
 
 
+    def test_undo_preview_reports_collision_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            documents = directory / "Documents"
+            documents.mkdir()
+
+            organized_report = documents / "report.pdf"
+            existing_report = directory / "report.pdf"
+            organized_report.write_text(
+                "organized report",
+                encoding="utf-8",
+            )
+            existing_report.write_text(
+                "existing report",
+                encoding="utf-8",
+            )
+
+            receipt_path = directory / "move-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(directory),
+                        "moves": [
+                            {
+                                "source": "report.pdf",
+                                "destination": (
+                                    "Documents/report.pdf"
+                                ),
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                ],
+                capture_output=True,
+                               text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "Error: undo destination already exists:",
+                result.stderr,
+            )
+            self.assertNotIn("UNDO PREVIEW:", result.stdout)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(
+                organized_report.read_text(encoding="utf-8"),
+                "organized report",
+            )
+            self.assertEqual(
+                existing_report.read_text(encoding="utf-8"),
+                "existing report",
+            )
+
+
+    def test_undo_preview_reports_missing_organized_file(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            receipt_path = directory / "move-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(directory),
+                        "moves": [
+                            {
+                                "source": "report.pdf",
+                                "destination": (
+                                    "Documents/report.pdf"
+                                ),
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "Error: undo source file does not exist:",
+                result.stderr,
+            )
+            self.assertNotIn("UNDO PREVIEW:", result.stdout)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertFalse((directory / "report.pdf").exists())
+            self.assertFalse((directory / "Documents").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

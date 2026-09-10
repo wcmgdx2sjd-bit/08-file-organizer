@@ -14,6 +14,7 @@ from organizer import (
     plan_undo_directories,
     plan_undo_moves,
     preflight_moves,
+    preflight_undo_moves,
     undo_files,
 )
 
@@ -118,7 +119,11 @@ def run(
         try:
             undo_moves = plan_undo_moves(receipt)
             undo_directories = plan_undo_directories(receipt)
-        except ValueError as error:
+            preflight_undo_moves(
+                undo_moves,
+                Path(receipt["directory"]),
+            )
+        except (OSError, ValueError) as error:
             print(
                 f"Error: {error}",
                 file=error_output,

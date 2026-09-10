@@ -202,16 +202,11 @@ def move_files(
 
 
 
-def undo_files(
+def preflight_undo_moves(
     planned_moves: list[tuple[Path, Path]],
     directory: Path,
-    *,
-    approved: bool,
-) -> list[Path]:
-    """Restore receipt moves only after complete validated approval."""
-    if approved is not True:
-        return []
-
+) -> list[tuple[Path, Path]]:
+    """Validate every rollback move without changing files."""
     directory = Path(directory).resolve()
     validated_moves = []
     destinations = set()
@@ -255,6 +250,23 @@ def undo_files(
         validated_moves.append((source, destination))
         destinations.add(destination)
 
+    return validated_moves
+
+
+def undo_files(
+    planned_moves: list[tuple[Path, Path]],
+    directory: Path,
+    *,
+    approved: bool,
+) -> list[Path]:
+    """Restore receipt moves only after complete validated approval."""
+    if approved is not True:
+        return []
+
+    validated_moves = preflight_undo_moves(
+        planned_moves,
+        directory,
+    )
     restored = []
 
     for source, destination in validated_moves:
@@ -262,8 +274,6 @@ def undo_files(
         restored.append(destination)
 
     return restored
-
-
 
 def plan_undo_directories(receipt: dict) -> list[Path]:
     """Return safe receipt-created directories in removal order."""
