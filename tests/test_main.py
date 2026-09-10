@@ -1,5 +1,6 @@
 import importlib
 import io
+import json
 import subprocess
 import sys
 import tempfile
@@ -8,12 +9,14 @@ from pathlib import Path
 
 from main import parse_args, run
 from organizer import (
+    build_move_receipt,
     create_category_folders,
     file_category,
     file_extension,
     list_files,
     move_files,
     plan_moves,
+    plan_undo_moves,
 )
 
 
@@ -718,6 +721,407 @@ class FileOrganizerTests(unittest.TestCase):
                 "existing report",
             )
             self.assertFalse((project / "Images").exists())
+
+
+    def test_builds_portable_move_receipt_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            client = directory / "client"
+            client.mkdir()
+
+            report = client / "report.pdf"
+            report.write_text("report", encoding="utf-8")
+            planned_moves = [
+                (
+                    report,
+                    client / "Documents" / "report.pdf",
+                ),
+            ]
+
+            receipt = build_move_receipt(
+                directory,
+                planned_moves,
+            )
+
+            self.assertEqual(
+                receipt,
+                {
+                    "receipt_version": 1,
+                    "directory": str(directory.resolve()),
+                    "moves": [
+                        {
+                            "source": "client/report.pdf",
+                            "destination": (
+                                "client/Documents/report.pdf"
+                            ),
+                        },
+                    ],
+                },
+            )
+            self.assertTrue(report.is_file())
+            self.assertFalse(
+                (client / "Documents").exists()
+            )
+
+
+    def test_cli_apply_writes_json_move_receipt(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            report = directory / "report.pdf"
+            receipt_path = directory / "move-receipt.json"
+            report.write_text("report", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--apply",
+                    "--receipt",
+                    str(receipt_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("Moved 1 file(s).", result.stdout)
+            self.assertIn(
+                f"Receipt: {receipt_path}",
+                result.stdout,
+            )
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(
+                json.loads(
+                    receipt_path.read_text(encoding="utf-8")
+                ),
+                {
+                    "receipt_version": 1,
+                    "directory": str(directory.resolve()),
+                    "moves": [
+                        {
+                            "source": "report.pdf",
+                            "destination": "Documents/report.pdf",
+                        },
+                    ],
+                },
+            )
+            self.assertFalse(report.exists())
+            self.assertTrue(
+                (directory / "Documents" / "report.pdf").is_file()
+            )
+
+
+    def test_existing_receipt_blocks_all_moves_without_overwrite(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            report = directory / "report.pdf"
+            photo = directory / "photo.jpg"
+            receipt_path = directory / "move-receipt.json"
+
+            report.write_text("report", encoding="utf-8")
+            photo.write_text("photo", encoding="utf-8")
+            receipt_path.write_text(
+                "existing receipt",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--apply",
+                    "--receipt",
+                    str(receipt_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "Error: receipt already exists:",
+                result.stderr,
+            )
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(
+                receipt_path.read_text(encoding="utf-8"),
+                "existing receipt",
+            )
+            self.assertTrue(report.is_file())
+            self.assertTrue(photo.is_file())
+            self.assertFalse((directory / "Documents").exists())
+            self.assertFalse((directory / "Images").exists())
+
+
+    def test_plans_undo_moves_from_receipt_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            documents = directory / "Documents"
+            images = directory / "Images"
+            documents.mkdir()
+            images.mkdir()
+
+            report = documents / "report.pdf"
+            photo = images / "photo.jpg"
+            report.write_text("report", encoding="utf-8")
+            photo.write_text("photo", encoding="utf-8")
+
+            receipt = {
+                "receipt_version": 1,
+                "directory": str(directory),
+                "moves": [
+                    {
+                        "source": "report.pdf",
+                        "destination": "Documents/report.pdf",
+                    },
+                    {
+                        "source": "photo.jpg",
+                        "destination": "Images/photo.jpg",
+                    },
+                ],
+            }
+
+            undo_moves = plan_undo_moves(receipt)
+
+            self.assertEqual(
+                undo_moves,
+                [
+                    (photo, directory / "photo.jpg"),
+                    (report, directory / "report.pdf"),
+                ],
+            )
+            self.assertTrue(report.is_file())
+            self.assertTrue(photo.is_file())
+            self.assertFalse((directory / "report.pdf").exists())
+            self.assertFalse((directory / "photo.jpg").exists())
+
+
+    def test_cli_undo_previews_receipt_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            documents = directory / "Documents"
+            documents.mkdir()
+
+            organized_report = documents / "report.pdf"
+            organized_report.write_text(
+                "report",
+                encoding="utf-8",
+            )
+            receipt_path = directory / "move-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(directory),
+                        "moves": [
+                            {
+                                "source": "report.pdf",
+                                "destination": (
+                                    "Documents/report.pdf"
+                                ),
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            self.assertIn(
+                (
+                    "UNDO PREVIEW: Documents/report.pdf -> "
+                    "report.pdf"
+                ),
+                result.stdout,
+            )
+            self.assertIn(
+                "No files were changed. Use --apply to approve.",
+                result.stdout,
+            )
+            self.assertTrue(organized_report.is_file())
+            self.assertFalse((directory / "report.pdf").exists())
+
+
+    def test_cli_undo_apply_restores_files_after_approval(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            documents = directory / "Documents"
+            images = directory / "Images"
+            documents.mkdir()
+            images.mkdir()
+
+            organized_report = documents / "report.pdf"
+            organized_photo = images / "photo.jpg"
+            organized_report.write_text(
+                "report",
+                encoding="utf-8",
+            )
+            organized_photo.write_text(
+                "photo",
+                encoding="utf-8",
+            )
+
+            receipt_path = directory / "move-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(directory),
+                        "moves": [
+                            {
+                                "source": "report.pdf",
+                                "destination": (
+                                    "Documents/report.pdf"
+                                ),
+                            },
+                            {
+                                "source": "photo.jpg",
+                                "destination": "Images/photo.jpg",
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                    "--apply",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            self.assertIn(
+                "UNDO: Images/photo.jpg -> photo.jpg",
+                result.stdout,
+            )
+            self.assertIn(
+                "UNDO: Documents/report.pdf -> report.pdf",
+                result.stdout,
+            )
+            self.assertIn("Restored 2 file(s).", result.stdout)
+            self.assertEqual(
+                (directory / "report.pdf").read_text(
+                    encoding="utf-8"
+                ),
+                "report",
+            )
+            self.assertEqual(
+                (directory / "photo.jpg").read_text(
+                    encoding="utf-8"
+                ),
+                "photo",
+            )
+            self.assertFalse(organized_report.exists())
+            self.assertFalse(organized_photo.exists())
+            self.assertTrue(receipt_path.is_file())
+
+
+    def test_undo_collision_blocks_every_restore(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            documents = directory / "Documents"
+            images = directory / "Images"
+            documents.mkdir()
+            images.mkdir()
+
+            organized_report = documents / "report.pdf"
+            organized_photo = images / "photo.jpg"
+            existing_report = directory / "report.pdf"
+
+            organized_report.write_text(
+                "organized report",
+                encoding="utf-8",
+            )
+            organized_photo.write_text(
+                "organized photo",
+                encoding="utf-8",
+            )
+            existing_report.write_text(
+                "existing report",
+                encoding="utf-8",
+            )
+
+            receipt_path = directory / "move-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(directory),
+                        "moves": [
+                            {
+                                "source": "report.pdf",
+                                "destination": (
+                                    "Documents/report.pdf"
+                                ),
+                            },
+                            {
+                                "source": "photo.jpg",
+                                "destination": "Images/photo.jpg",
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                    "--apply",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "Error: undo destination already exists:",
+                result.stderr,
+            )
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(
+                existing_report.read_text(encoding="utf-8"),
+                "existing report",
+            )
+            self.assertEqual(
+                organized_report.read_text(encoding="utf-8"),
+                "organized report",
+            )
+            self.assertEqual(
+                organized_photo.read_text(encoding="utf-8"),
+                "organized photo",
+            )
+            self.assertFalse((directory / "photo.jpg").exists())
 
 
 if __name__ == "__main__":

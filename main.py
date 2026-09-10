@@ -1,15 +1,19 @@
 """Project 08: build a safe command-line file organizer."""
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 
 from organizer import (
+    build_move_receipt,
     create_category_folders,
     move_files,
     plan_moves,
+    plan_undo_moves,
     preflight_moves,
+    undo_files,
 )
 
 
@@ -23,6 +27,7 @@ def parse_args(arguments=None):
     parser.add_argument(
         "directory",
         type=Path,
+        nargs="?",
         help="Directory containing files to organize.",
     )
     parser.add_argument(
@@ -38,6 +43,19 @@ def parse_args(arguments=None):
             "category folders."
         ),
     )
+    parser.add_argument(
+        "--receipt",
+        type=Path,
+        help=(
+            "Write a JSON move receipt after a successful "
+            "--apply operation."
+        ),
+    )
+    parser.add_argument(
+        "--undo",
+        type=Path,
+        help="Preview or apply rollback from a JSON move receipt.",
+    )
     return parser.parse_args(arguments)
 
 
@@ -47,6 +65,71 @@ def run(
     error_output=sys.stderr,
 ) -> int:
     """Preview planned moves or apply them with explicit approval."""
+    if arguments.undo is not None:
+        receipt_path = Path(arguments.undo)
+
+        try:
+            receipt = json.loads(
+                receipt_path.read_text(encoding="utf-8")
+            )
+            undo_moves = plan_undo_moves(receipt)
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as error:
+            print(
+                f"Error: invalid move receipt: {error}",
+                file=error_output,
+            )
+            return 1
+
+        directory = Path(receipt["directory"]).resolve()
+
+        for source, destination in undo_moves:
+            relative_source = source.relative_to(directory)
+            relative_destination = destination.relative_to(directory)
+            action = "UNDO" if arguments.apply else "UNDO PREVIEW"
+            print(
+                f"{action}: "
+                f"{relative_source} -> {relative_destination}",
+                file=output,
+            )
+
+        if not arguments.apply:
+            print(
+                "No files were changed. Use --apply to approve.",
+                file=output,
+            )
+            return 0
+
+        try:
+            undo_files(
+                undo_moves,
+                directory,
+                approved=True,
+            )
+        except (OSError, ValueError) as error:
+            print(
+                f"Error: {error}",
+                file=error_output,
+            )
+            return 1
+
+        print(
+            f"Restored {len(undo_moves)} file(s).",
+            file=output,
+        )
+        return 0
+
+    if arguments.directory is None:
+        print(
+            "Error: provide a directory or --undo receipt.",
+            file=error_output,
+        )
+        return 1
+
     directory = Path(arguments.directory)
 
     if not directory.exists():
@@ -84,10 +167,48 @@ def run(
         )
         return 0
 
+    receipt_path = (
+        Path(arguments.receipt)
+        if arguments.receipt is not None
+        else None
+    )
+    receipt = None
+
     try:
         preflight_moves(planned_moves)
+
+        if receipt_path is not None:
+            if receipt_path.exists():
+                raise FileExistsError(
+                    f"receipt already exists: {receipt_path}"
+                )
+
+            if not receipt_path.parent.is_dir():
+                raise FileNotFoundError(
+                    "receipt directory does not exist: "
+                    f"{receipt_path.parent}"
+                )
+
+            receipt = build_move_receipt(
+                directory,
+                planned_moves,
+            )
+
         create_category_folders(planned_moves, approved=True)
         move_files(planned_moves, approved=True)
+
+        if receipt_path is not None:
+            with receipt_path.open(
+                "x",
+                encoding="utf-8",
+            ) as receipt_file:
+                json.dump(
+                    receipt,
+                    receipt_file,
+                    indent=2,
+                    sort_keys=True,
+                )
+                receipt_file.write("\n")
     except (OSError, ValueError) as error:
         print(
             f"Error: {error}",
@@ -99,6 +220,13 @@ def run(
         f"Moved {len(planned_moves)} file(s).",
         file=output,
     )
+
+    if receipt_path is not None:
+        print(
+            f"Receipt: {receipt_path}",
+            file=output,
+        )
+
     return 0
 
 

@@ -28,6 +28,48 @@ def file_category(path: Path) -> str:
     return "Other"
 
 
+
+def build_move_receipt(
+    directory: Path,
+    planned_moves: list[tuple[Path, Path]],
+) -> dict:
+    """Return a portable JSON-ready receipt without changing files."""
+    directory = Path(directory).resolve()
+    receipt_moves = []
+
+    for source, destination in planned_moves:
+        source = Path(source).resolve()
+        destination = Path(destination).resolve()
+
+        if not source.is_relative_to(directory):
+            raise ValueError(
+                f"source must stay inside directory: {source}"
+            )
+
+        if not destination.is_relative_to(directory):
+            raise ValueError(
+                f"destination must stay inside directory: "
+                f"{destination}"
+            )
+
+        receipt_moves.append(
+            {
+                "source": source.relative_to(directory).as_posix(),
+                "destination": (
+                    destination
+                    .relative_to(directory)
+                    .as_posix()
+                ),
+            }
+        )
+
+    return {
+        "receipt_version": 1,
+        "directory": str(directory),
+        "moves": receipt_moves,
+    }
+
+
 def create_category_folders(
     planned_moves: list[tuple[Path, Path]],
     *,
@@ -126,6 +168,140 @@ def move_files(
         moved.append(destination)
 
     return moved
+
+
+
+
+def undo_files(
+    planned_moves: list[tuple[Path, Path]],
+    directory: Path,
+    *,
+    approved: bool,
+) -> list[Path]:
+    """Restore receipt moves only after complete validated approval."""
+    if approved is not True:
+        return []
+
+    directory = Path(directory).resolve()
+    validated_moves = []
+    destinations = set()
+
+    for source, destination in planned_moves:
+        source = Path(source).resolve()
+        destination = Path(destination).resolve()
+
+        if not source.is_relative_to(directory):
+            raise ValueError(
+                f"undo source must stay inside directory: {source}"
+            )
+
+        if not destination.is_relative_to(directory):
+            raise ValueError(
+                "undo destination must stay inside directory: "
+                f"{destination}"
+            )
+
+        if not source.is_file():
+            raise FileNotFoundError(
+                f"undo source file does not exist: {source}"
+            )
+
+        if destination.exists():
+            raise FileExistsError(
+                f"undo destination already exists: {destination}"
+            )
+
+        if destination in destinations:
+            raise FileExistsError(
+                f"duplicate undo destination: {destination}"
+            )
+
+        if not destination.parent.is_dir():
+            raise FileNotFoundError(
+                "undo destination directory does not exist: "
+                f"{destination.parent}"
+            )
+
+        validated_moves.append((source, destination))
+        destinations.add(destination)
+
+    restored = []
+
+    for source, destination in validated_moves:
+        source.rename(destination)
+        restored.append(destination)
+
+    return restored
+
+
+def plan_undo_moves(
+    receipt: dict,
+) -> list[tuple[Path, Path]]:
+    """Return validated rollback moves without changing files."""
+    expected_keys = {
+        "receipt_version",
+        "directory",
+        "moves",
+    }
+
+    if not isinstance(receipt, dict) or set(receipt) != expected_keys:
+        raise ValueError("invalid move receipt structure.")
+
+    if receipt["receipt_version"] != 1:
+        raise ValueError("unsupported move receipt version.")
+
+    if (
+        not isinstance(receipt["directory"], str)
+        or not receipt["directory"].strip()
+    ):
+        raise ValueError("receipt directory must be non-empty text.")
+
+    if not isinstance(receipt["moves"], list):
+        raise ValueError("receipt moves must be a list.")
+
+    directory = Path(receipt["directory"]).resolve()
+    undo_moves = []
+
+    for move in reversed(receipt["moves"]):
+        if (
+            not isinstance(move, dict)
+            or set(move) != {"source", "destination"}
+        ):
+            raise ValueError("invalid move receipt entry.")
+
+        source_text = move["source"]
+        destination_text = move["destination"]
+
+        if (
+            not isinstance(source_text, str)
+            or not source_text.strip()
+            or not isinstance(destination_text, str)
+            or not destination_text.strip()
+        ):
+            raise ValueError(
+                "receipt paths must be non-empty text."
+            )
+
+        original_path = (directory / source_text).resolve()
+        organized_path = (
+            directory / destination_text
+        ).resolve()
+
+        if not original_path.is_relative_to(directory):
+            raise ValueError(
+                "receipt source resolves outside directory."
+            )
+
+        if not organized_path.is_relative_to(directory):
+            raise ValueError(
+                "receipt destination resolves outside directory."
+            )
+
+        undo_moves.append(
+            (organized_path, original_path)
+        )
+
+    return undo_moves
 
 
 def plan_moves(
