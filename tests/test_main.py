@@ -1,3 +1,4 @@
+import hashlib
 import importlib
 import io
 import json
@@ -754,6 +755,9 @@ class FileOrganizerTests(unittest.TestCase):
                             "destination": (
                                 "client/Documents/report.pdf"
                             ),
+                            "sha256": hashlib.sha256(
+                                b"report"
+                            ).hexdigest(),
                         },
                     ],
                 },
@@ -803,6 +807,9 @@ class FileOrganizerTests(unittest.TestCase):
                         {
                             "source": "report.pdf",
                             "destination": "Documents/report.pdf",
+                            "sha256": hashlib.sha256(
+                                b"report"
+                            ).hexdigest(),
                         },
                     ],
                 },
@@ -1121,6 +1128,104 @@ class FileOrganizerTests(unittest.TestCase):
                 organized_photo.read_text(encoding="utf-8"),
                 "organized photo",
             )
+            self.assertFalse((directory / "photo.jpg").exists())
+
+
+    def test_move_receipt_records_source_content_sha256(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            report = directory / "report.pdf"
+            content = b"quarterly report\n"
+            report.write_bytes(content)
+
+            receipt = build_move_receipt(
+                directory,
+                [
+                    (
+                        report,
+                        directory / "Documents" / "report.pdf",
+                    ),
+                ],
+            )
+
+            self.assertEqual(
+                receipt["moves"][0]["sha256"],
+                hashlib.sha256(content).hexdigest(),
+            )
+            self.assertEqual(report.read_bytes(), content)
+            self.assertFalse(
+                (directory / "Documents").exists()
+            )
+
+
+    def test_changed_file_blocks_entire_undo(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            documents = directory / "Documents"
+            images = directory / "Images"
+            documents.mkdir()
+            images.mkdir()
+
+            report = documents / "report.pdf"
+            photo = images / "photo.jpg"
+            original_report = b"original report\n"
+            changed_report = b"changed after organization\n"
+            photo_content = b"original photo\n"
+
+            report.write_bytes(changed_report)
+            photo.write_bytes(photo_content)
+
+            receipt_path = directory / "move-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(directory),
+                        "moves": [
+                            {
+                                "source": "report.pdf",
+                                "destination": (
+                                    "Documents/report.pdf"
+                                ),
+                                "sha256": hashlib.sha256(
+                                    original_report
+                                ).hexdigest(),
+                            },
+                            {
+                                "source": "photo.jpg",
+                                "destination": "Images/photo.jpg",
+                                "sha256": hashlib.sha256(
+                                    photo_content
+                                ).hexdigest(),
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                    "--apply",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "Error: organized file content changed:",
+                result.stderr,
+            )
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(report.read_bytes(), changed_report)
+            self.assertEqual(photo.read_bytes(), photo_content)
+            self.assertFalse((directory / "report.pdf").exists())
             self.assertFalse((directory / "photo.jpg").exists())
 
 

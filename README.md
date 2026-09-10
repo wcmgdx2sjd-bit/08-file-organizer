@@ -43,7 +43,7 @@ This command-line program organizes files into folders based on file type. It pr
 
 ## Current Verified Status
 
-All nine milestones are complete, with 27 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, preview-first undo, and atomic collision safety.
+All nine milestones are complete, with 29 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, and atomic collision safety.
 
 ## Preview Changes
 
@@ -99,8 +99,7 @@ Use `--receipt` with an approved operation to record every move:
 python3 main.py /path/to/test-directory --recursive --apply --receipt move-receipt.json
 ```
 
-The receipt stores portable relative source and destination paths.
-An existing receipt is never overwritten.
+The receipt stores portable relative source and destination paths plus a SHA-256 fingerprint of each file. An existing receipt is never overwritten.
 
 ## Undo an Organized Move
 
@@ -116,7 +115,7 @@ After reviewing the preview, explicitly approve the rollback:
 python3 main.py --undo move-receipt.json --apply
 ```
 
-Undo validates every source and destination before moving anything. A missing file, invalid receipt, or collision blocks the complete rollback. The receipt remains as an audit record.
+Undo validates every source, destination, and recorded SHA-256 fingerprint before moving anything. A missing file, changed file, invalid receipt, or collision blocks the complete rollback. The receipt remains as an audit record.
 
 ## Repository Location
 

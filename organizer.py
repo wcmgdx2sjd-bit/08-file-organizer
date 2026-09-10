@@ -1,5 +1,6 @@
 """Reusable core operations for the safe File Organizer."""
 
+import hashlib
 from pathlib import Path
 
 
@@ -27,6 +28,21 @@ def file_category(path: Path) -> str:
 
     return "Other"
 
+
+
+
+def file_sha256(path: Path) -> str:
+    """Return the SHA-256 digest of a file without changing it."""
+    digest = hashlib.sha256()
+
+    with Path(path).open("rb") as source_file:
+        for chunk in iter(
+            lambda: source_file.read(1024 * 1024),
+            b"",
+        ):
+            digest.update(chunk)
+
+    return digest.hexdigest()
 
 
 def build_move_receipt(
@@ -60,6 +76,7 @@ def build_move_receipt(
                     .relative_to(directory)
                     .as_posix()
                 ),
+                "sha256": file_sha256(source),
             }
         )
 
@@ -263,9 +280,14 @@ def plan_undo_moves(
     undo_moves = []
 
     for move in reversed(receipt["moves"]):
+        allowed_keys = (
+            {"source", "destination"},
+            {"source", "destination", "sha256"},
+        )
+
         if (
             not isinstance(move, dict)
-            or set(move) != {"source", "destination"}
+            or set(move) not in allowed_keys
         ):
             raise ValueError("invalid move receipt entry.")
 
@@ -296,6 +318,31 @@ def plan_undo_moves(
             raise ValueError(
                 "receipt destination resolves outside directory."
             )
+
+        expected_sha256 = move.get("sha256")
+
+        if expected_sha256 is not None:
+            if (
+                not isinstance(expected_sha256, str)
+                or len(expected_sha256) != 64
+                or any(
+                    character not in "0123456789abcdef"
+                    for character in expected_sha256
+                )
+            ):
+                raise ValueError(
+                    "receipt SHA-256 must be 64 lowercase "
+                    "hexadecimal characters."
+                )
+
+            if (
+                organized_path.is_file()
+                and file_sha256(organized_path) != expected_sha256
+            ):
+                raise ValueError(
+                    "organized file content changed: "
+                    f"{organized_path}"
+                )
 
         undo_moves.append(
             (organized_path, original_path)

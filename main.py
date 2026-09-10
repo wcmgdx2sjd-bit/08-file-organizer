@@ -72,15 +72,22 @@ def run(
             receipt = json.loads(
                 receipt_path.read_text(encoding="utf-8")
             )
-            undo_moves = plan_undo_moves(receipt)
         except (
             OSError,
             UnicodeError,
             json.JSONDecodeError,
-            ValueError,
         ) as error:
             print(
                 f"Error: invalid move receipt: {error}",
+                file=error_output,
+            )
+            return 1
+
+        try:
+            undo_moves = plan_undo_moves(receipt)
+        except ValueError as error:
+            print(
+                f"Error: {error}",
                 file=error_output,
             )
             return 1
