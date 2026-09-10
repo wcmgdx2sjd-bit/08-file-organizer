@@ -1229,5 +1229,131 @@ class FileOrganizerTests(unittest.TestCase):
             self.assertFalse((directory / "photo.jpg").exists())
 
 
+    def test_receipt_requires_explicit_apply_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            report = directory / "report.pdf"
+            receipt_path = directory / "move-receipt.json"
+            report.write_text("report", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--receipt",
+                    str(receipt_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(
+                result.stderr,
+                "Error: --receipt requires --apply.\n",
+            )
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertTrue(report.is_file())
+            self.assertFalse(receipt_path.exists())
+            self.assertFalse((directory / "Documents").exists())
+
+
+    def test_undo_rejects_directory_argument_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            directory = temporary_root / "files"
+            directory.mkdir()
+            report = directory / "report.pdf"
+            report.write_text("report", encoding="utf-8")
+
+            receipt_path = temporary_root / "receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(directory.resolve()),
+                        "moves": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--undo",
+                    str(receipt_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(
+                result.stderr,
+                "Error: directory cannot be used with --undo.\n",
+            )
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertTrue(report.is_file())
+            self.assertFalse((directory / "Documents").exists())
+
+
+    def test_undo_rejects_organizer_only_options(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            receipt_path = directory / "receipt.json"
+            second_receipt = directory / "second-receipt.json"
+
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(directory),
+                        "moves": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            conflicting_options = (
+                ["--recursive"],
+                ["--receipt", str(second_receipt), "--apply"],
+            )
+
+            for options in conflicting_options:
+                with self.subTest(options=options):
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            str(
+                                Path(__file__).parents[1]
+                                / "main.py"
+                            ),
+                            "--undo",
+                            str(receipt_path),
+                            *options,
+                        ],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+
+                    self.assertEqual(result.returncode, 1)
+                    self.assertEqual(
+                        result.stderr,
+                        (
+                            "Error: --undo cannot be combined with "
+                            "--receipt or --recursive.\n"
+                        ),
+                    )
+                    self.assertNotIn("Traceback", result.stderr)
+                    self.assertFalse(second_receipt.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

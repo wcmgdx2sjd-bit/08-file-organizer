@@ -65,6 +65,37 @@ def run(
     error_output=sys.stderr,
 ) -> int:
     """Preview planned moves or apply them with explicit approval."""
+    if (
+        arguments.undo is not None
+        and (
+            arguments.receipt is not None
+            or arguments.recursive
+        )
+    ):
+        print(
+            "Error: --undo cannot be combined with "
+            "--receipt or --recursive.",
+            file=error_output,
+        )
+        return 1
+
+    if arguments.receipt is not None and not arguments.apply:
+        print(
+            "Error: --receipt requires --apply.",
+            file=error_output,
+        )
+        return 1
+
+    if (
+        arguments.undo is not None
+        and arguments.directory is not None
+    ):
+        print(
+            "Error: directory cannot be used with --undo.",
+            file=error_output,
+        )
+        return 1
+
     if arguments.undo is not None:
         receipt_path = Path(arguments.undo)
 
