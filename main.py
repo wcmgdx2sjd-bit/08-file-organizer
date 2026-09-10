@@ -210,7 +210,8 @@ def run(
         if arguments.receipt is not None
         else None
     )
-    receipt = None
+    receipt_created = False
+    moves_started = False
 
     try:
         preflight_moves(planned_moves)
@@ -232,14 +233,11 @@ def run(
                 planned_moves,
             )
 
-        create_category_folders(planned_moves, approved=True)
-        move_files(planned_moves, approved=True)
-
-        if receipt_path is not None:
             with receipt_path.open(
                 "x",
                 encoding="utf-8",
             ) as receipt_file:
+                receipt_created = True
                 json.dump(
                     receipt,
                     receipt_file,
@@ -247,7 +245,21 @@ def run(
                     sort_keys=True,
                 )
                 receipt_file.write("\n")
+
+        create_category_folders(planned_moves, approved=True)
+        moves_started = True
+        move_files(planned_moves, approved=True)
     except (OSError, ValueError) as error:
+        if (
+            receipt_path is not None
+            and receipt_created
+            and not moves_started
+        ):
+            try:
+                receipt_path.unlink()
+            except OSError:
+                pass
+
         print(
             f"Error: {error}",
             file=error_output,

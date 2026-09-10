@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from main import parse_args, run
 from organizer import (
@@ -1353,6 +1354,48 @@ class FileOrganizerTests(unittest.TestCase):
                     )
                     self.assertNotIn("Traceback", result.stderr)
                     self.assertFalse(second_receipt.exists())
+
+
+    def test_receipt_write_failure_blocks_moves(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            report = directory / "report.pdf"
+            receipt_path = directory / "move-receipt.json"
+            report.write_text("report", encoding="utf-8")
+            output = io.StringIO()
+            error_output = io.StringIO()
+            arguments = parse_args(
+                [
+                    str(directory),
+                    "--apply",
+                    "--receipt",
+                    str(receipt_path),
+                ]
+            )
+
+            with mock.patch(
+                "main.json.dump",
+                side_effect=OSError("simulated disk failure"),
+            ):
+                exit_code = run(
+                    arguments,
+                    output=output,
+                    error_output=error_output,
+                )
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn(
+                "Error: simulated disk failure",
+                error_output.getvalue(),
+            )
+            self.assertNotIn("Traceback", error_output.getvalue())
+            self.assertTrue(report.is_file())
+            self.assertEqual(
+                report.read_text(encoding="utf-8"),
+                "report",
+            )
+            self.assertFalse((directory / "Documents").exists())
+            self.assertFalse(receipt_path.exists())
 
 
 if __name__ == "__main__":
