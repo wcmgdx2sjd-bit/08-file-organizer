@@ -58,6 +58,13 @@ def parse_args(arguments=None):
         type=Path,
         help="Preview or apply rollback from a JSON move receipt.",
     )
+    parser.add_argument(
+        "--undo-directory",
+        type=Path,
+        help=(
+            "Use a relocated directory as the root for --undo."
+        ),
+    )
     return parser.parse_args(arguments)
 
 
@@ -67,6 +74,16 @@ def run(
     error_output=sys.stderr,
 ) -> int:
     """Preview planned moves or apply them with explicit approval."""
+    if (
+        arguments.undo_directory is not None
+        and arguments.undo is None
+    ):
+        print(
+            "Error: --undo-directory requires --undo.",
+            file=error_output,
+        )
+        return 1
+
     if (
         arguments.undo is not None
         and (
@@ -117,11 +134,34 @@ def run(
             return 1
 
         try:
-            undo_moves = plan_undo_moves(receipt)
-            undo_directories = plan_undo_directories(receipt)
+            undo_moves = plan_undo_moves(
+                receipt,
+                arguments.undo_directory,
+            )
+
+            directory = Path(
+                receipt["directory"]
+                if arguments.undo_directory is None
+                else arguments.undo_directory
+            ).resolve()
+
+            if not directory.exists():
+                raise FileNotFoundError(
+                    f"undo directory does not exist: {directory}"
+                )
+
+            if not directory.is_dir():
+                raise NotADirectoryError(
+                    f"undo path is not a directory: {directory}"
+                )
+
+            undo_directories = plan_undo_directories(
+                receipt,
+                directory,
+            )
             preflight_undo_moves(
                 undo_moves,
-                Path(receipt["directory"]),
+                directory,
             )
         except (OSError, ValueError) as error:
             print(
@@ -129,8 +169,6 @@ def run(
                 file=error_output,
             )
             return 1
-
-        directory = Path(receipt["directory"]).resolve()
 
         for source, destination in undo_moves:
             relative_source = source.relative_to(directory)

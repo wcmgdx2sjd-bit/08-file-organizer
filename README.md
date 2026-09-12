@@ -26,6 +26,7 @@ This command-line program organizes files into folders based on file type. It pr
 7. ✅ Add a preview-first command-line interface and complete automated coverage.
 8. ✅ Add optional recursive organization with nested-folder collision safety.
 9. ✅ Add JSON move receipts and preview-first, collision-safe undo.
+10. ✅ Add explicit, safe undo support for relocated directories.
 
 ## Safety Rules
 
@@ -43,7 +44,7 @@ This command-line program organizes files into folders based on file type. It pr
 
 ## Current Verified Status
 
-All nine milestones are complete, with 37 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, and atomic collision safety.
+All ten milestones are complete, with 43 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, and atomic collision safety.
 
 ## Preview Changes
 
@@ -114,6 +115,14 @@ After reviewing the preview, explicitly approve the rollback:
 ```bash
 python3 main.py --undo move-receipt.json --apply
 ```
+
+If the organized directory has moved or been renamed, provide its current location:
+
+```bash
+python3 main.py --undo move-receipt.json --undo-directory /current/path
+```
+
+Add `--apply` only after reviewing the relocated preview. The override must be an existing directory and never changes the receipt.
 
 Undo cannot be combined with a directory, `--receipt`, or `--recursive`. Preview and apply run the same complete preflight, validating every source, destination, collision, and recorded SHA-256 fingerprint before showing or moving anything. A missing file, changed file, invalid receipt, or collision blocks the complete rollback. After restoring files, undo removes only the recorded organizer-created folders that are empty; pre-existing or non-empty folders remain untouched. The receipt remains as an audit record.
 

@@ -275,7 +275,10 @@ def undo_files(
 
     return restored
 
-def plan_undo_directories(receipt: dict) -> list[Path]:
+def plan_undo_directories(
+    receipt: dict,
+    directory: Path | None = None,
+) -> list[Path]:
     """Return safe receipt-created directories in removal order."""
     created_directories = receipt.get("created_directories", [])
 
@@ -284,7 +287,11 @@ def plan_undo_directories(receipt: dict) -> list[Path]:
             "receipt created_directories must be a list."
         )
 
-    directory = Path(receipt["directory"]).resolve()
+    directory = Path(
+        receipt["directory"]
+        if directory is None
+        else directory
+    ).resolve()
     destination_parents = {
         (
             directory / move["destination"]
@@ -340,6 +347,7 @@ def plan_undo_directories(receipt: dict) -> list[Path]:
 
 def plan_undo_moves(
     receipt: dict,
+    directory: Path | None = None,
 ) -> list[tuple[Path, Path]]:
     """Return validated rollback moves without changing files."""
     allowed_keys = (
@@ -374,7 +382,11 @@ def plan_undo_moves(
     if not isinstance(receipt["moves"], list):
         raise ValueError("receipt moves must be a list.")
 
-    directory = Path(receipt["directory"]).resolve()
+    directory = Path(
+        receipt["directory"]
+        if directory is None
+        else directory
+    ).resolve()
     undo_moves = []
 
     for move in reversed(receipt["moves"]):

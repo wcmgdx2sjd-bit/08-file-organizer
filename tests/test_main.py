@@ -1605,5 +1605,318 @@ class FileOrganizerTests(unittest.TestCase):
             self.assertFalse((directory / "Documents").exists())
 
 
+    def test_cli_undo_directory_previews_relocated_workspace(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            original_directory = (
+                temporary_root / "original-files"
+            ).resolve()
+            relocated_directory = (
+                temporary_root / "relocated-files"
+            ).resolve()
+            documents = relocated_directory / "Documents"
+            documents.mkdir(parents=True)
+
+            organized_report = documents / "report.pdf"
+            organized_report.write_text(
+                "report",
+                encoding="utf-8",
+            )
+
+            receipt_path = temporary_root / "move-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(original_directory),
+                        "moves": [
+                            {
+                                "source": "report.pdf",
+                                "destination": (
+                                    "Documents/report.pdf"
+                                ),
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                    "--undo-directory",
+                    str(relocated_directory),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            self.assertIn(
+                (
+                    "UNDO PREVIEW: Documents/report.pdf -> "
+                    "report.pdf"
+                ),
+                result.stdout,
+            )
+            self.assertIn(
+                "No files were changed. Use --apply to approve.",
+                result.stdout,
+            )
+            self.assertTrue(organized_report.is_file())
+            self.assertFalse(
+                (relocated_directory / "report.pdf").exists()
+            )
+
+
+    def test_cli_undo_directory_restores_relocated_workspace(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            original_directory = (
+                temporary_root / "original-files"
+            ).resolve()
+            relocated_directory = (
+                temporary_root / "relocated-files"
+            ).resolve()
+            documents = relocated_directory / "Documents"
+            documents.mkdir(parents=True)
+
+            organized_report = documents / "report.pdf"
+            content = b"relocated report\n"
+            organized_report.write_bytes(content)
+
+            receipt_path = temporary_root / "move-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(original_directory),
+                        "created_directories": ["Documents"],
+                        "moves": [
+                            {
+                                "source": "report.pdf",
+                                "destination": (
+                                    "Documents/report.pdf"
+                                ),
+                                "sha256": hashlib.sha256(
+                                    content
+                                ).hexdigest(),
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                    "--undo-directory",
+                    str(relocated_directory),
+                    "--apply",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            restored_report = relocated_directory / "report.pdf"
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            self.assertIn(
+                (
+                    "UNDO: Documents/report.pdf -> "
+                    "report.pdf"
+                ),
+                result.stdout,
+            )
+            self.assertIn("Restored 1 file(s).", result.stdout)
+            self.assertEqual(restored_report.read_bytes(), content)
+            self.assertFalse(organized_report.exists())
+            self.assertFalse(documents.exists())
+            self.assertTrue(receipt_path.is_file())
+
+
+    def test_undo_directory_requires_undo_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            report = directory / "report.pdf"
+            report.write_text("report", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--undo-directory",
+                    str(directory),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(
+                result.stderr,
+                "Error: --undo-directory requires --undo.\n",
+            )
+            self.assertNotIn("PREVIEW:", result.stdout)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertTrue(report.is_file())
+            self.assertFalse((directory / "Documents").exists())
+
+
+    def test_undo_directory_rejects_missing_directory(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            original_directory = (
+                temporary_root / "original-files"
+            ).resolve()
+            missing_directory = (
+                temporary_root / "missing-files"
+            ).resolve()
+            receipt_path = temporary_root / "move-receipt.json"
+
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(original_directory),
+                        "moves": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                    "--undo-directory",
+                    str(missing_directory),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(
+                result.stderr,
+                (
+                    "Error: undo directory does not exist: "
+                    f"{missing_directory}\n"
+                ),
+            )
+            self.assertNotIn("UNDO PREVIEW:", result.stdout)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertFalse(missing_directory.exists())
+            self.assertTrue(receipt_path.is_file())
+
+
+    def test_undo_directory_rejects_file_path(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            original_directory = (
+                temporary_root / "original-files"
+            ).resolve()
+            file_path = temporary_root / "not-a-directory.txt"
+            file_path.write_text(
+                "unchanged",
+                encoding="utf-8",
+            )
+
+            receipt_path = temporary_root / "move-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(original_directory),
+                        "moves": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                    "--undo-directory",
+                    str(file_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(
+                result.stderr,
+                (
+                    "Error: undo path is not a directory: "
+                    f"{file_path.resolve()}\n"
+                ),
+            )
+            self.assertNotIn("UNDO PREVIEW:", result.stdout)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(
+                file_path.read_text(encoding="utf-8"),
+                "unchanged",
+            )
+            self.assertTrue(receipt_path.is_file())
+
+
+    def test_undo_receipt_without_directory_has_no_traceback(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            receipt_path = directory / "invalid-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "moves": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(
+                result.stderr,
+                "Error: invalid move receipt structure.\n",
+            )
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertTrue(receipt_path.is_file())
+
+
 if __name__ == "__main__":
     unittest.main()
