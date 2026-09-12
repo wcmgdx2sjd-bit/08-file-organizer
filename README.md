@@ -30,6 +30,7 @@ This command-line program organizes files into folders based on file type. It pr
 11. ✅ Add collision-safe recovery after unexpected move failures.
 12. ✅ Add read-only receipt status reporting for completed, pending, partial, and problematic operations.
 13. ✅ Add validated JSON category rules that safely extend the built-in file types.
+14. ✅ Add a read-only command that prints an example custom-rules document.
 
 ## Safety Rules
 
@@ -50,7 +51,7 @@ This command-line program organizes files into folders based on file type. It pr
 
 ## Current Verified Status
 
-All thirteen milestones are complete, with 62 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, atomic collision safety, collision-safe recovery from unexpected move failures, read-only receipt state reporting, and validated custom category rules.
+All fourteen milestones are complete, with 63 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, atomic collision safety, collision-safe recovery from unexpected move failures, read-only receipt state reporting, and validated custom category rules.
 
 ## Preview Changes
 
@@ -84,7 +85,21 @@ Each file is organized beside its current location. Existing category folders ar
 
 ## Custom Category Rules
 
-Create a JSON rules file outside the directory being organized:
+Print a ready-to-edit example:
+
+```bash
+python3 main.py --rules-example
+```
+
+Save it directly to a file:
+
+```bash
+python3 main.py --rules-example > rules.json
+```
+
+This command is read-only and cannot be combined with other options.
+
+Create or edit the JSON rules file outside the directory being organized:
 
 ```json
 {

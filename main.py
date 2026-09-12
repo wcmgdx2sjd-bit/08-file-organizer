@@ -6,6 +6,14 @@ import sys
 from pathlib import Path
 
 
+RULES_EXAMPLE = {
+    "categories": {
+        "Data": [".csv", ".tsv"],
+        "Documents": [".md"],
+    }
+}
+
+
 from organizer import (
     build_move_receipt,
     create_category_folders,
@@ -53,6 +61,11 @@ def parse_args(arguments=None):
         help="Load additional category rules from a JSON file.",
     )
     parser.add_argument(
+        "--rules-example",
+        action="store_true",
+        help="Print an example custom-rules JSON document.",
+    )
+    parser.add_argument(
         "--receipt",
         type=Path,
         help=(
@@ -87,6 +100,33 @@ def run(
     error_output=sys.stderr,
 ) -> int:
     """Preview planned moves or apply them with explicit approval."""
+    if arguments.rules_example:
+        if (
+            arguments.directory is not None
+            or arguments.apply
+            or arguments.recursive
+            or arguments.rules is not None
+            or arguments.receipt is not None
+            or arguments.undo is not None
+            or arguments.undo_directory is not None
+            or arguments.receipt_status is not None
+        ):
+            print(
+                "Error: --rules-example cannot be combined "
+                "with other options.",
+                file=error_output,
+            )
+            return 1
+
+        json.dump(
+            RULES_EXAMPLE,
+            output,
+            indent=2,
+            sort_keys=True,
+        )
+        print(file=output)
+        return 0
+
     if arguments.receipt_status is not None:
         if (
             arguments.directory is not None

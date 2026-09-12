@@ -2905,5 +2905,43 @@ class FileOrganizerTests(unittest.TestCase):
             )
 
 
+    def test_cli_rules_example_prints_valid_json_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            sentinel = directory / "unchanged.txt"
+            sentinel.write_text("unchanged", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--rules-example",
+                ],
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            document = json.loads(result.stdout)
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(
+                document,
+                {
+                    "categories": {
+                        "Data": [".csv", ".tsv"],
+                        "Documents": [".md"],
+                    }
+                },
+            )
+            self.assertEqual(
+                sentinel.read_text(encoding="utf-8"),
+                "unchanged",
+            )
+            self.assertEqual(list(directory.iterdir()), [sentinel])
+
+
 if __name__ == "__main__":
     unittest.main()
