@@ -192,10 +192,39 @@ def move_files(
             )
 
     moved = []
+    completed_moves = []
 
-    for source, destination in validated_moves:
-        source.rename(destination)
-        moved.append(destination)
+    try:
+        for source, destination in validated_moves:
+            source.rename(destination)
+            moved.append(destination)
+            completed_moves.append((source, destination))
+    except OSError as move_error:
+        rollback_errors = []
+
+        for source, destination in reversed(completed_moves):
+            if source.exists():
+                rollback_errors.append(
+                    "rollback destination already exists: "
+                    f"{source}"
+                )
+                continue
+
+            try:
+                destination.rename(source)
+            except OSError as rollback_error:
+                rollback_errors.append(
+                    f"rollback failed: {destination} -> "
+                    f"{source}: {rollback_error}"
+                )
+
+        if rollback_errors:
+            raise OSError(
+                f"{move_error}; rollback incomplete: "
+                + "; ".join(rollback_errors)
+            ) from move_error
+
+        raise
 
     return moved
 
@@ -268,10 +297,39 @@ def undo_files(
         directory,
     )
     restored = []
+    completed_restores = []
 
-    for source, destination in validated_moves:
-        source.rename(destination)
-        restored.append(destination)
+    try:
+        for source, destination in validated_moves:
+            source.rename(destination)
+            restored.append(destination)
+            completed_restores.append((source, destination))
+    except OSError as undo_error:
+        rollback_errors = []
+
+        for source, destination in reversed(completed_restores):
+            if source.exists():
+                rollback_errors.append(
+                    "rollback destination already exists: "
+                    f"{source}"
+                )
+                continue
+
+            try:
+                destination.rename(source)
+            except OSError as rollback_error:
+                rollback_errors.append(
+                    f"rollback failed: {destination} -> "
+                    f"{source}: {rollback_error}"
+                )
+
+        if rollback_errors:
+            raise OSError(
+                f"{undo_error}; rollback incomplete: "
+                + "; ".join(rollback_errors)
+            ) from undo_error
+
+        raise
 
     return restored
 

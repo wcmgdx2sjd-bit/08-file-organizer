@@ -263,7 +263,15 @@ def run(
         else None
     )
     receipt_created = False
-    moves_started = False
+    created_directories = sorted(
+        {
+            destination.parent
+            for _, destination in planned_moves
+            if not destination.parent.exists()
+        },
+        key=lambda folder: len(folder.parts),
+        reverse=True,
+    )
 
     try:
         preflight_moves(planned_moves)
@@ -299,18 +307,26 @@ def run(
                 receipt_file.write("\n")
 
         create_category_folders(planned_moves, approved=True)
-        moves_started = True
         move_files(planned_moves, approved=True)
     except (OSError, ValueError) as error:
-        if (
-            receipt_path is not None
-            and receipt_created
-            and not moves_started
-        ):
-            try:
-                receipt_path.unlink()
-            except OSError:
-                pass
+        rollback_complete = all(
+            source.is_file() and not destination.exists()
+            for source, destination in planned_moves
+        )
+
+        if rollback_complete:
+            for created_directory in created_directories:
+                if (
+                    created_directory.is_dir()
+                    and not any(created_directory.iterdir())
+                ):
+                    created_directory.rmdir()
+
+            if receipt_path is not None and receipt_created:
+                try:
+                    receipt_path.unlink()
+                except OSError:
+                    pass
 
         print(
             f"Error: {error}",

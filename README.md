@@ -27,6 +27,7 @@ This command-line program organizes files into folders based on file type. It pr
 8. ✅ Add optional recursive organization with nested-folder collision safety.
 9. ✅ Add JSON move receipts and preview-first, collision-safe undo.
 10. ✅ Add explicit, safe undo support for relocated directories.
+11. ✅ Add collision-safe recovery after unexpected move failures.
 
 ## Safety Rules
 
@@ -34,6 +35,7 @@ This command-line program organizes files into folders based on file type. It pr
 - Never overwrite an existing file.
 - Ignore directories and process files only.
 - Preview actions before applying them.
+- Attempt rollback after a later filesystem failure without overwriting new files.
 - Skip existing category folders during recursive scans.
 - Test with disposable sample files first.
 
@@ -44,7 +46,7 @@ This command-line program organizes files into folders based on file type. It pr
 
 ## Current Verified Status
 
-All ten milestones are complete, with 43 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, and atomic collision safety.
+All eleven milestones are complete, with 48 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, atomic collision safety, and collision-safe recovery from unexpected move failures.
 
 ## Preview Changes
 

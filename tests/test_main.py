@@ -19,6 +19,7 @@ from organizer import (
     move_files,
     plan_moves,
     plan_undo_moves,
+    undo_files,
 )
 
 
@@ -1916,6 +1917,302 @@ class FileOrganizerTests(unittest.TestCase):
             self.assertNotIn("Traceback", result.stderr)
             self.assertEqual(result.stdout, "")
             self.assertTrue(receipt_path.is_file())
+
+
+    def test_move_failure_rolls_back_completed_moves(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            documents = directory / "Documents"
+            images = directory / "Images"
+            documents.mkdir()
+            images.mkdir()
+
+            report = directory / "report.pdf"
+            photo = directory / "photo.jpg"
+            report.write_text("report", encoding="utf-8")
+            photo.write_text("photo", encoding="utf-8")
+
+            report_destination = documents / "report.pdf"
+            photo_destination = images / "photo.jpg"
+            planned_moves = [
+                (report, report_destination),
+                (photo, photo_destination),
+            ]
+
+            original_rename = Path.rename
+
+            def simulated_rename(source, destination):
+                if source == photo:
+                    raise OSError("simulated move failure")
+
+                return original_rename(source, destination)
+
+            with mock.patch(
+                "pathlib.Path.rename",
+                new=simulated_rename,
+            ):
+                with self.assertRaisesRegex(
+                    OSError,
+                    "simulated move failure",
+                ):
+                    move_files(
+                        planned_moves,
+                        approved=True,
+                    )
+
+            self.assertEqual(
+                report.read_text(encoding="utf-8"),
+                "report",
+            )
+            self.assertEqual(
+                photo.read_text(encoding="utf-8"),
+                "photo",
+            )
+            self.assertFalse(report_destination.exists())
+            self.assertFalse(photo_destination.exists())
+
+
+    def test_cli_move_failure_removes_receipt_and_created_folders(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            photo = directory / "photo.jpg"
+            report = directory / "report.pdf"
+            receipt_path = directory / "move-receipt.json"
+            photo.write_text("photo", encoding="utf-8")
+            report.write_text("report", encoding="utf-8")
+
+            arguments = parse_args(
+                [
+                    str(directory),
+                    "--apply",
+                    "--receipt",
+                    str(receipt_path),
+                ]
+            )
+            output = io.StringIO()
+            error_output = io.StringIO()
+            original_rename = Path.rename
+
+            def simulated_rename(source, destination):
+                if source == report:
+                    raise OSError("simulated move failure")
+
+                return original_rename(source, destination)
+
+            with mock.patch(
+                "pathlib.Path.rename",
+                new=simulated_rename,
+            ):
+                exit_code = run(
+                    arguments,
+                    output=output,
+                    error_output=error_output,
+                )
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(
+                error_output.getvalue(),
+                "Error: simulated move failure\n",
+            )
+            self.assertNotIn("Moved", output.getvalue())
+            self.assertEqual(
+                photo.read_text(encoding="utf-8"),
+                "photo",
+            )
+            self.assertEqual(
+                report.read_text(encoding="utf-8"),
+                "report",
+            )
+            self.assertFalse(receipt_path.exists())
+            self.assertFalse((directory / "Images").exists())
+            self.assertFalse((directory / "Documents").exists())
+
+
+    def test_undo_failure_rolls_back_completed_restores(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            documents = directory / "Documents"
+            images = directory / "Images"
+            documents.mkdir()
+            images.mkdir()
+
+            organized_report = documents / "report.pdf"
+            organized_photo = images / "photo.jpg"
+            organized_report.write_text(
+                "report",
+                encoding="utf-8",
+            )
+            organized_photo.write_text(
+                "photo",
+                encoding="utf-8",
+            )
+
+            report = directory / "report.pdf"
+            photo = directory / "photo.jpg"
+            undo_moves = [
+                (organized_report, report),
+                (organized_photo, photo),
+            ]
+            original_rename = Path.rename
+
+            def simulated_rename(source, destination):
+                if source == organized_photo:
+                    raise OSError("simulated undo failure")
+
+                return original_rename(source, destination)
+
+            with mock.patch(
+                "pathlib.Path.rename",
+                new=simulated_rename,
+            ):
+                with self.assertRaisesRegex(
+                    OSError,
+                    "simulated undo failure",
+                ):
+                    undo_files(
+                        undo_moves,
+                        directory,
+                        approved=True,
+                    )
+
+            self.assertEqual(
+                organized_report.read_text(encoding="utf-8"),
+                "report",
+            )
+            self.assertEqual(
+                organized_photo.read_text(encoding="utf-8"),
+                "photo",
+            )
+            self.assertFalse(report.exists())
+            self.assertFalse(photo.exists())
+
+
+    def test_move_rollback_never_overwrites_new_source_file(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            documents = directory / "Documents"
+            images = directory / "Images"
+            documents.mkdir()
+            images.mkdir()
+
+            report = directory / "report.pdf"
+            photo = directory / "photo.jpg"
+            report.write_text(
+                "original report",
+                encoding="utf-8",
+            )
+            photo.write_text("photo", encoding="utf-8")
+
+            report_destination = documents / "report.pdf"
+            photo_destination = images / "photo.jpg"
+            planned_moves = [
+                (report, report_destination),
+                (photo, photo_destination),
+            ]
+            original_rename = Path.rename
+
+            def simulated_rename(source, destination):
+                if source == photo:
+                    report.write_text(
+                        "new arrival",
+                        encoding="utf-8",
+                    )
+                    raise OSError("simulated move failure")
+
+                return original_rename(source, destination)
+
+            with mock.patch(
+                "pathlib.Path.rename",
+                new=simulated_rename,
+            ):
+                with self.assertRaisesRegex(
+                    OSError,
+                    "rollback destination already exists",
+                ):
+                    move_files(
+                        planned_moves,
+                        approved=True,
+                    )
+
+            self.assertEqual(
+                report.read_text(encoding="utf-8"),
+                "new arrival",
+            )
+            self.assertEqual(
+                report_destination.read_text(encoding="utf-8"),
+                "original report",
+            )
+            self.assertEqual(
+                photo.read_text(encoding="utf-8"),
+                "photo",
+            )
+            self.assertFalse(photo_destination.exists())
+
+
+    def test_undo_rollback_never_overwrites_new_organized_file(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            documents = directory / "Documents"
+            images = directory / "Images"
+            documents.mkdir()
+            images.mkdir()
+
+            organized_report = documents / "report.pdf"
+            organized_photo = images / "photo.jpg"
+            organized_report.write_text(
+                "original report",
+                encoding="utf-8",
+            )
+            organized_photo.write_text(
+                "photo",
+                encoding="utf-8",
+            )
+
+            report = directory / "report.pdf"
+            photo = directory / "photo.jpg"
+            undo_moves = [
+                (organized_report, report),
+                (organized_photo, photo),
+            ]
+            original_rename = Path.rename
+
+            def simulated_rename(source, destination):
+                if source == organized_photo:
+                    organized_report.write_text(
+                        "new arrival",
+                        encoding="utf-8",
+                    )
+                    raise OSError("simulated undo failure")
+
+                return original_rename(source, destination)
+
+            with mock.patch(
+                "pathlib.Path.rename",
+                new=simulated_rename,
+            ):
+                with self.assertRaisesRegex(
+                    OSError,
+                    "rollback destination already exists",
+                ):
+                    undo_files(
+                        undo_moves,
+                        directory,
+                        approved=True,
+                    )
+
+            self.assertEqual(
+                organized_report.read_text(encoding="utf-8"),
+                "new arrival",
+            )
+            self.assertEqual(
+                report.read_text(encoding="utf-8"),
+                "original report",
+            )
+            self.assertEqual(
+                organized_photo.read_text(encoding="utf-8"),
+                "photo",
+            )
+            self.assertFalse(photo.exists())
 
 
 if __name__ == "__main__":
