@@ -1356,7 +1356,7 @@ class FileOrganizerTests(unittest.TestCase):
                         result.stderr,
                         (
                             "Error: --undo cannot be combined with "
-                            "--receipt or --recursive.\n"
+                            "--receipt, --recursive, or --rules.\n"
                         ),
                     )
                     self.assertNotIn("Traceback", result.stderr)
@@ -2566,6 +2566,342 @@ class FileOrganizerTests(unittest.TestCase):
             self.assertEqual(
                 list(directory.iterdir()),
                 [],
+            )
+
+
+    def test_custom_category_rules_extend_defaults_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            data_file = directory / "records.CSV"
+            report = directory / "report.pdf"
+            data_file.write_text(
+                "name,value\nalpha,1\n",
+                encoding="utf-8",
+            )
+            report.write_text("report", encoding="utf-8")
+
+            planned_moves = plan_moves(
+                directory,
+                category_rules={
+                    "Data": {".csv"},
+                },
+            )
+
+            self.assertEqual(
+                planned_moves,
+                [
+                    (
+                        data_file,
+                        directory / "Data" / "records.CSV",
+                    ),
+                    (
+                        report,
+                        directory / "Documents" / "report.pdf",
+                    ),
+                ],
+            )
+            self.assertTrue(data_file.is_file())
+            self.assertTrue(report.is_file())
+            self.assertFalse((directory / "Data").exists())
+            self.assertFalse((directory / "Documents").exists())
+
+
+    def test_custom_category_rejects_path_traversal_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            data_file = directory / "records.csv"
+            data_file.write_text(
+                "name,value\nalpha,1\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "category name must be a single folder name",
+            ):
+                plan_moves(
+                    directory,
+                    category_rules={
+                        "../Escape": {".csv"},
+                    },
+                )
+
+            self.assertTrue(data_file.is_file())
+            self.assertFalse(
+                (directory.parent / "Escape").exists()
+            )
+
+
+    def test_cli_rules_file_previews_custom_category_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            directory = temporary_root / "files"
+            directory.mkdir()
+
+            data_file = directory / "records.CSV"
+            report = directory / "report.pdf"
+            data_file.write_text(
+                "name,value\nalpha,1\n",
+                encoding="utf-8",
+            )
+            report.write_text("report", encoding="utf-8")
+
+            rules_path = temporary_root / "rules.json"
+            rules_path.write_text(
+                json.dumps(
+                    {
+                        "categories": {
+                            "Data": [".csv", ".tsv"],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--rules",
+                    str(rules_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            self.assertIn(
+                "PREVIEW: records.CSV -> Data/records.CSV",
+                result.stdout,
+            )
+            self.assertIn(
+                "PREVIEW: report.pdf -> Documents/report.pdf",
+                result.stdout,
+            )
+            self.assertIn(
+                "No files were changed. Use --apply to approve.",
+                result.stdout,
+            )
+            self.assertTrue(data_file.is_file())
+            self.assertTrue(report.is_file())
+            self.assertFalse((directory / "Data").exists())
+            self.assertFalse((directory / "Documents").exists())
+
+
+    def test_rules_file_rejects_extension_already_in_default_category(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            directory = temporary_root / "files"
+            directory.mkdir()
+
+            report = directory / "report.pdf"
+            report.write_text("report", encoding="utf-8")
+
+            rules_path = temporary_root / "rules.json"
+            rules_path.write_text(
+                json.dumps(
+                    {
+                        "categories": {
+                            "Data": [".pdf"],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--rules",
+                    str(rules_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(
+                result.stderr,
+                (
+                    "Error: invalid rules file: extension "
+                    "already assigned to Documents: .pdf\n"
+                ),
+            )
+            self.assertEqual(result.stdout, "")
+            self.assertTrue(report.is_file())
+            self.assertFalse((directory / "Documents").exists())
+            self.assertFalse((directory / "Data").exists())
+            self.assertTrue(rules_path.is_file())
+
+
+    def test_custom_rules_extend_existing_category_without_replacement(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            notes = directory / "notes.md"
+            report = directory / "report.pdf"
+            notes.write_text("notes", encoding="utf-8")
+            report.write_text("report", encoding="utf-8")
+
+            planned_moves = plan_moves(
+                directory,
+                category_rules={
+                    "Documents": {".md"},
+                },
+            )
+
+            self.assertEqual(
+                planned_moves,
+                [
+                    (
+                        notes,
+                        directory / "Documents" / "notes.md",
+                    ),
+                    (
+                        report,
+                        directory / "Documents" / "report.pdf",
+                    ),
+                ],
+            )
+            self.assertTrue(notes.is_file())
+            self.assertTrue(report.is_file())
+            self.assertFalse((directory / "Documents").exists())
+
+
+    def test_cli_rules_file_apply_moves_file_and_writes_receipt(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            directory = temporary_root / "files"
+            directory.mkdir()
+
+            content = b"name,value\nalpha,1\n"
+            data_file = directory / "records.CSV"
+            data_file.write_bytes(content)
+
+            rules_path = temporary_root / "rules.json"
+            rules_path.write_text(
+                json.dumps(
+                    {
+                        "categories": {
+                            "Data": [".csv"],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            receipt_path = temporary_root / "move-receipt.json"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--rules",
+                    str(rules_path),
+                    "--apply",
+                    "--receipt",
+                    str(receipt_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            destination = directory / "Data" / "records.CSV"
+            receipt = json.loads(
+                receipt_path.read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            self.assertIn(
+                "MOVE: records.CSV -> Data/records.CSV",
+                result.stdout,
+            )
+            self.assertEqual(destination.read_bytes(), content)
+            self.assertFalse(data_file.exists())
+            self.assertEqual(
+                receipt["moves"][0]["destination"],
+                "Data/records.CSV",
+            )
+            self.assertEqual(
+                receipt["moves"][0]["sha256"],
+                hashlib.sha256(content).hexdigest(),
+            )
+            self.assertEqual(
+                receipt["created_directories"],
+                ["Data"],
+            )
+
+
+    def test_rules_file_cannot_be_combined_with_undo(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            receipt_path = directory / "move-receipt.json"
+            rules_path = directory / "rules.json"
+
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(directory),
+                        "moves": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            rules_path.write_text(
+                json.dumps(
+                    {
+                        "categories": {
+                            "Data": [".csv"],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--undo",
+                    str(receipt_path),
+                    "--rules",
+                    str(rules_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(
+                result.stderr,
+                (
+                    "Error: --undo cannot be combined with "
+                    "--receipt, --recursive, or --rules.\n"
+                ),
+            )
+            self.assertEqual(result.stdout, "")
+            self.assertTrue(receipt_path.is_file())
+            self.assertTrue(rules_path.is_file())
+
+
+    def test_custom_category_rejects_case_insensitive_name_conflict(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "category name conflicts with Documents: documents",
+        ):
+            organizer.normalize_category_rules(
+                {
+                    "documents": [".md"],
+                }
             )
 
 

@@ -18,11 +18,130 @@ extension_categories = {
 }
 
 
-def file_category(path: Path) -> str:
+
+def normalize_category_rules(category_rules=None):
+    """Validate and normalize custom category rules."""
+    if category_rules is None:
+        return {}
+
+    if not isinstance(category_rules, dict):
+        raise ValueError("category rules must be an object.")
+
+    normalized_rules = {}
+    assigned_extensions = {
+        extension: category
+        for category, extensions
+        in extension_categories.items()
+        for extension in extensions
+    }
+    category_names_by_casefold = {
+        category.casefold(): category
+        for category in extension_categories
+    }
+
+    for category, extensions in category_rules.items():
+        if (
+            not isinstance(category, str)
+            or not category
+            or category != category.strip()
+            or category in {".", ".."}
+            or "/" in category
+            or "\\" in category
+            or Path(category).is_absolute()
+        ):
+            raise ValueError(
+                "category name must be a single folder name: "
+                f"{category}"
+            )
+
+        existing_category = category_names_by_casefold.get(
+            category.casefold()
+        )
+
+        if (
+            existing_category is not None
+            and existing_category != category
+        ):
+            raise ValueError(
+                f"category name conflicts with "
+                f"{existing_category}: {category}"
+            )
+
+        category_names_by_casefold[category.casefold()] = category
+
+        if not isinstance(
+            extensions,
+            (list, tuple, set, frozenset),
+        ):
+            raise ValueError(
+                f"extensions for {category} must be a collection."
+            )
+
+        normalized_extensions = set()
+
+        for extension in extensions:
+            if (
+                not isinstance(extension, str)
+                or len(extension) < 2
+                or not extension.startswith(".")
+                or extension.count(".") != 1
+                or "/" in extension
+                or "\\" in extension
+                or extension != extension.strip()
+            ):
+                raise ValueError(
+                    f"invalid extension for {category}: {extension}"
+                )
+
+            normalized_extension = extension.lower()
+
+            if normalized_extension in assigned_extensions:
+                assigned_category = assigned_extensions[
+                    normalized_extension
+                ]
+                raise ValueError(
+                    "extension already assigned to "
+                    f"{assigned_category}: {normalized_extension}"
+                )
+
+            normalized_extensions.add(normalized_extension)
+            assigned_extensions[normalized_extension] = category
+
+        normalized_rules[category] = normalized_extensions
+
+    return normalized_rules
+
+
+def parse_category_rules(document):
+    """Return normalized rules from a strict JSON-ready document."""
+    if (
+        not isinstance(document, dict)
+        or set(document) != {"categories"}
+    ):
+        raise ValueError(
+            "rules file must contain only a categories object."
+        )
+
+    return normalize_category_rules(document["categories"])
+
+def file_category(
+    path: Path,
+    *,
+    category_rules=None,
+) -> str:
     """Return the category associated with a file's extension."""
     extension = file_extension(path)
+    rules = {
+        category: set(extensions)
+        for category, extensions in extension_categories.items()
+    }
 
-    for category, extensions in extension_categories.items():
+    for category, extensions in normalize_category_rules(
+        category_rules
+    ).items():
+        rules.setdefault(category, set()).update(extensions)
+
+    for category, extensions in rules.items():
         if extension in extensions:
             return category
 
@@ -674,6 +793,7 @@ def plan_moves(
     directory: Path,
     *,
     recursive: bool = False,
+    category_rules=None,
 ) -> list[tuple[Path, Path]]:
     """Return proposed source and destination paths without moving files."""
     directory = Path(directory)
@@ -682,7 +802,10 @@ def plan_moves(
         (
             file_path,
             file_path.parent
-            / file_category(file_path)
+            / file_category(
+                file_path,
+                category_rules=category_rules,
+            )
             / file_path.name,
         )
         for file_path in list_files(
@@ -696,10 +819,15 @@ def list_files(
     directory: Path,
     *,
     recursive: bool = False,
+    category_rules=None,
 ) -> list[Path]:
     """Return eligible files sorted by their relative paths."""
     directory = Path(directory)
     category_names = set(extension_categories) | {"Other"}
+
+    category_names.update(
+        normalize_category_rules(category_rules)
+    )
     candidates = (
         directory.rglob("*")
         if recursive

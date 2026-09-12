@@ -11,6 +11,7 @@ from organizer import (
     create_category_folders,
     inspect_move_receipt,
     move_files,
+    parse_category_rules,
     plan_moves,
     plan_undo_directories,
     plan_undo_moves,
@@ -45,6 +46,11 @@ def parse_args(arguments=None):
             "Include nested folders while skipping existing "
             "category folders."
         ),
+    )
+    parser.add_argument(
+        "--rules",
+        type=Path,
+        help="Load additional category rules from a JSON file.",
     )
     parser.add_argument(
         "--receipt",
@@ -88,6 +94,7 @@ def run(
             or arguments.recursive
             or arguments.receipt is not None
             or arguments.undo is not None
+            or arguments.rules is not None
         ):
             print(
                 "Error: --receipt-status cannot be combined "
@@ -142,11 +149,12 @@ def run(
         and (
             arguments.receipt is not None
             or arguments.recursive
+            or arguments.rules is not None
         )
     ):
         print(
             "Error: --undo cannot be combined with "
-            "--receipt or --recursive.",
+            "--receipt, --recursive, or --rules.",
             file=error_output,
         )
         return 1
@@ -289,9 +297,32 @@ def run(
         )
         return 1
 
+    category_rules = None
+
+    if arguments.rules is not None:
+        try:
+            rules_document = json.loads(
+                Path(arguments.rules).read_text(encoding="utf-8")
+            )
+            category_rules = parse_category_rules(
+                rules_document
+            )
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as error:
+            print(
+                f"Error: invalid rules file: {error}",
+                file=error_output,
+            )
+            return 1
+
     planned_moves = plan_moves(
         directory,
         recursive=arguments.recursive,
+        category_rules=category_rules,
     )
 
     for source, destination in planned_moves:

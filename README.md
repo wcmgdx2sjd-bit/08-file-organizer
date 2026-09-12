@@ -29,6 +29,7 @@ This command-line program organizes files into folders based on file type. It pr
 10. ✅ Add explicit, safe undo support for relocated directories.
 11. ✅ Add collision-safe recovery after unexpected move failures.
 12. ✅ Add read-only receipt status reporting for completed, pending, partial, and problematic operations.
+13. ✅ Add validated JSON category rules that safely extend the built-in file types.
 
 ## Safety Rules
 
@@ -36,6 +37,7 @@ This command-line program organizes files into folders based on file type. It pr
 - Never overwrite an existing file.
 - Ignore directories and process files only.
 - Preview actions before applying them.
+- Validate custom category names and extensions.
 - Inspect receipt state without changing files.
 - Attempt rollback after a later filesystem failure without overwriting new files.
 - Skip existing category folders during recursive scans.
@@ -48,7 +50,7 @@ This command-line program organizes files into folders based on file type. It pr
 
 ## Current Verified Status
 
-All twelve milestones are complete, with 54 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, atomic collision safety, collision-safe recovery from unexpected move failures, and read-only receipt state reporting.
+All thirteen milestones are complete, with 62 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, atomic collision safety, collision-safe recovery from unexpected move failures, read-only receipt state reporting, and validated custom category rules.
 
 ## Preview Changes
 
@@ -79,6 +81,27 @@ python3 main.py /path/to/test-directory --recursive --apply
 ```
 
 Each file is organized beside its current location. Existing category folders are skipped, and one collision blocks every planned move.
+
+## Custom Category Rules
+
+Create a JSON rules file outside the directory being organized:
+
+```json
+{
+  "categories": {
+    "Data": [".csv", ".tsv"],
+    "Documents": [".md"]
+  }
+}
+```
+
+Preview with the additional rules:
+
+```bash
+python3 main.py /path/to/test-directory --rules rules.json
+```
+
+Add `--apply` only after reviewing the preview. Custom rules extend the defaults; they do not replace existing extensions. Category names must be single folder names, extensions must begin with one period, and duplicate extension assignments and case-insensitive category conflicts are rejected.
 
 ## Apply Changes
 

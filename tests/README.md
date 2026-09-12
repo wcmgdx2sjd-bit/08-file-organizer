@@ -1,6 +1,6 @@
 # Tests
 
-All twelve milestones have 54 automated tests covering the reusable organizer module, thin CLI boundary, preview-only behavior, recursive discovery and apply behavior, category-folder skipping, JSON move receipts, SHA-256 fingerprint verification, preview-first undo, explicit approval, friendly invalid-path errors, atomic collision safety, collision-safe apply and undo rollback, read-only receipt status reporting, and the real command-line entry point.
+All thirteen milestones have 61 automated tests covering the reusable organizer module, thin CLI boundary, preview-only behavior, recursive discovery and apply behavior, category-folder skipping, JSON move receipts, SHA-256 fingerprint verification, preview-first undo, explicit approval, friendly invalid-path errors, atomic collision safety, collision-safe apply and undo rollback, read-only receipt status reporting, validated custom category rules, and the real command-line entry point.
 
 Run the tests from the project root:
 
