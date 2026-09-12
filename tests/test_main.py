@@ -7,6 +7,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+import organizer
 from unittest import mock
 
 from main import parse_args, run
@@ -2213,6 +2215,358 @@ class FileOrganizerTests(unittest.TestCase):
                 "photo",
             )
             self.assertFalse(photo.exists())
+
+
+    def test_receipt_status_detects_partial_operation_read_only(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            documents = directory / "Documents"
+            documents.mkdir()
+
+            pending_photo = directory / "photo.jpg"
+            completed_report = documents / "report.pdf"
+            pending_photo.write_text("photo", encoding="utf-8")
+            completed_report.write_text(
+                "report",
+                encoding="utf-8",
+            )
+
+            receipt = {
+                "receipt_version": 1,
+                "directory": str(directory),
+                "moves": [
+                    {
+                        "source": "photo.jpg",
+                        "destination": "Images/photo.jpg",
+                    },
+                    {
+                        "source": "report.pdf",
+                        "destination": "Documents/report.pdf",
+                    },
+                ],
+            }
+
+            before = {
+                path.relative_to(directory): path.read_bytes()
+                for path in directory.rglob("*")
+                if path.is_file()
+            }
+
+            status = organizer.inspect_move_receipt(receipt)
+
+            after = {
+                path.relative_to(directory): path.read_bytes()
+                for path in directory.rglob("*")
+                if path.is_file()
+            }
+
+            self.assertEqual(status["status"], "partial")
+            self.assertEqual(
+                [
+                    move["status"]
+                    for move in status["moves"]
+                ],
+                ["pending", "completed"],
+            )
+            self.assertEqual(
+                status["counts"],
+                {
+                    "pending": 1,
+                    "completed": 1,
+                    "problems": 0,
+                },
+            )
+            self.assertEqual(after, before)
+
+
+    def test_receipt_status_reports_changed_completed_file(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            documents = directory / "Documents"
+            documents.mkdir()
+
+            original_content = b"original report\n"
+            changed_content = b"changed report\n"
+            organized_report = documents / "report.pdf"
+            organized_report.write_bytes(changed_content)
+
+            receipt = {
+                "receipt_version": 1,
+                "directory": str(directory),
+                "moves": [
+                    {
+                        "source": "report.pdf",
+                        "destination": "Documents/report.pdf",
+                        "sha256": hashlib.sha256(
+                            original_content
+                        ).hexdigest(),
+                    },
+                ],
+            }
+
+            before = organized_report.read_bytes()
+            status = organizer.inspect_move_receipt(receipt)
+            after = organized_report.read_bytes()
+
+            self.assertEqual(status["status"], "problem")
+            self.assertEqual(
+                status["moves"][0]["status"],
+                "changed",
+            )
+            self.assertEqual(
+                status["counts"],
+                {
+                    "pending": 0,
+                    "completed": 0,
+                    "problems": 1,
+                },
+            )
+            self.assertEqual(after, before)
+
+
+    def test_cli_receipt_status_reports_partial_json_read_only(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            documents = directory / "Documents"
+            documents.mkdir()
+
+            pending_photo = directory / "photo.jpg"
+            completed_report = documents / "report.pdf"
+            pending_photo.write_text("photo", encoding="utf-8")
+            completed_report.write_text(
+                "report",
+                encoding="utf-8",
+            )
+
+            receipt_path = directory / "move-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(directory),
+                        "moves": [
+                            {
+                                "source": "photo.jpg",
+                                "destination": "Images/photo.jpg",
+                            },
+                            {
+                                "source": "report.pdf",
+                                "destination": (
+                                    "Documents/report.pdf"
+                                ),
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            before = {
+                path.relative_to(directory): path.read_bytes()
+                for path in directory.rglob("*")
+                if path.is_file()
+            }
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--receipt-status",
+                    str(receipt_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            after = {
+                path.relative_to(directory): path.read_bytes()
+                for path in directory.rglob("*")
+                if path.is_file()
+            }
+            report = json.loads(result.stdout)
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(report["status"], "partial")
+            self.assertEqual(
+                report["counts"],
+                {
+                    "pending": 1,
+                    "completed": 1,
+                    "problems": 0,
+                },
+            )
+            self.assertEqual(after, before)
+
+
+    def test_cli_receipt_status_returns_zero_when_completed(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            documents = directory / "Documents"
+            documents.mkdir()
+
+            content = b"completed report\n"
+            organized_report = documents / "report.pdf"
+            organized_report.write_bytes(content)
+
+            receipt_path = directory / "move-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(directory),
+                        "moves": [
+                            {
+                                "source": "report.pdf",
+                                "destination": (
+                                    "Documents/report.pdf"
+                                ),
+                                "sha256": hashlib.sha256(
+                                    content
+                                ).hexdigest(),
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            before = organized_report.read_bytes()
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--receipt-status",
+                    str(receipt_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            status = json.loads(result.stdout)
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(status["status"], "completed")
+            self.assertEqual(
+                status["moves"][0]["status"],
+                "completed",
+            )
+            self.assertEqual(
+                status["counts"],
+                {
+                    "pending": 0,
+                    "completed": 1,
+                    "problems": 0,
+                },
+            )
+            self.assertEqual(
+                organized_report.read_bytes(),
+                before,
+            )
+            self.assertTrue(receipt_path.is_file())
+
+
+    def test_cli_receipt_status_supports_relocated_directory(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            original_directory = (
+                temporary_root / "original-files"
+            ).resolve()
+            relocated_directory = (
+                temporary_root / "relocated-files"
+            ).resolve()
+            documents = relocated_directory / "Documents"
+            documents.mkdir(parents=True)
+
+            content = b"relocated report\n"
+            organized_report = documents / "report.pdf"
+            organized_report.write_bytes(content)
+
+            receipt_path = temporary_root / "move-receipt.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "receipt_version": 1,
+                        "directory": str(original_directory),
+                        "moves": [
+                            {
+                                "source": "report.pdf",
+                                "destination": (
+                                    "Documents/report.pdf"
+                                ),
+                                "sha256": hashlib.sha256(
+                                    content
+                                ).hexdigest(),
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--receipt-status",
+                    str(receipt_path),
+                    "--undo-directory",
+                    str(relocated_directory),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            status = json.loads(result.stdout)
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(status["status"], "completed")
+            self.assertEqual(
+                status["directory"],
+                str(relocated_directory),
+            )
+            self.assertEqual(
+                status["moves"][0]["status"],
+                "completed",
+            )
+            self.assertEqual(
+                organized_report.read_bytes(),
+                content,
+            )
+            self.assertTrue(receipt_path.is_file())
+
+
+    def test_receipt_status_treats_empty_receipt_as_completed(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory).resolve()
+            receipt = {
+                "receipt_version": 1,
+                "directory": str(directory),
+                "moves": [],
+            }
+
+            status = organizer.inspect_move_receipt(receipt)
+
+            self.assertEqual(status["status"], "completed")
+            self.assertEqual(status["moves"], [])
+            self.assertEqual(
+                status["counts"],
+                {
+                    "pending": 0,
+                    "completed": 0,
+                    "problems": 0,
+                },
+            )
+            self.assertEqual(
+                list(directory.iterdir()),
+                [],
+            )
 
 
 if __name__ == "__main__":

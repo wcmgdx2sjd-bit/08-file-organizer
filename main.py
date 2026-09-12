@@ -9,6 +9,7 @@ from pathlib import Path
 from organizer import (
     build_move_receipt,
     create_category_folders,
+    inspect_move_receipt,
     move_files,
     plan_moves,
     plan_undo_directories,
@@ -62,8 +63,14 @@ def parse_args(arguments=None):
         "--undo-directory",
         type=Path,
         help=(
-            "Use a relocated directory as the root for --undo."
+            "Use a relocated directory as the root for --undo "
+            "or --receipt-status."
         ),
+    )
+    parser.add_argument(
+        "--receipt-status",
+        type=Path,
+        help="Print a read-only JSON move-receipt status report.",
     )
     return parser.parse_args(arguments)
 
@@ -74,6 +81,52 @@ def run(
     error_output=sys.stderr,
 ) -> int:
     """Preview planned moves or apply them with explicit approval."""
+    if arguments.receipt_status is not None:
+        if (
+            arguments.directory is not None
+            or arguments.apply
+            or arguments.recursive
+            or arguments.receipt is not None
+            or arguments.undo is not None
+        ):
+            print(
+                "Error: --receipt-status cannot be combined "
+                "with organizer or undo options.",
+                file=error_output,
+            )
+            return 1
+
+        receipt_path = Path(arguments.receipt_status)
+
+        try:
+            receipt = json.loads(
+                receipt_path.read_text(encoding="utf-8")
+            )
+            status_report = inspect_move_receipt(
+                receipt,
+                arguments.undo_directory,
+            )
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as error:
+            print(
+                f"Error: invalid move receipt: {error}",
+                file=error_output,
+            )
+            return 1
+
+        json.dump(
+            status_report,
+            output,
+            indent=2,
+            sort_keys=True,
+        )
+        print(file=output)
+        return 0 if status_report["status"] == "completed" else 1
+
     if (
         arguments.undo_directory is not None
         and arguments.undo is None

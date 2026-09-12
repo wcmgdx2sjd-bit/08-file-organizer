@@ -403,6 +403,157 @@ def plan_undo_directories(
     )
 
 
+def inspect_move_receipt(
+    receipt: dict,
+    directory: Path | None = None,
+) -> dict:
+    """Report move state without changing files."""
+    allowed_keys = (
+        {"receipt_version", "directory", "moves"},
+        {
+            "receipt_version",
+            "directory",
+            "moves",
+            "created_directories",
+        },
+    )
+
+    if (
+        not isinstance(receipt, dict)
+        or set(receipt) not in allowed_keys
+    ):
+        raise ValueError("invalid move receipt structure.")
+
+    if receipt["receipt_version"] != 1:
+        raise ValueError("unsupported move receipt version.")
+
+    if (
+        not isinstance(receipt["directory"], str)
+        or not receipt["directory"].strip()
+    ):
+        raise ValueError("receipt directory must be non-empty text.")
+
+    if not isinstance(receipt["moves"], list):
+        raise ValueError("receipt moves must be a list.")
+
+    directory = Path(
+        receipt["directory"]
+        if directory is None
+        else directory
+    ).resolve()
+    move_reports = []
+    counts = {
+        "pending": 0,
+        "completed": 0,
+        "problems": 0,
+    }
+
+    for move in receipt["moves"]:
+        if (
+            not isinstance(move, dict)
+            or set(move) not in (
+                {"source", "destination"},
+                {"source", "destination", "sha256"},
+            )
+        ):
+            raise ValueError("invalid move receipt entry.")
+
+        source_text = move["source"]
+        destination_text = move["destination"]
+
+        if (
+            not isinstance(source_text, str)
+            or not source_text.strip()
+            or not isinstance(destination_text, str)
+            or not destination_text.strip()
+        ):
+            raise ValueError(
+                "receipt paths must be non-empty text."
+            )
+
+        source = (directory / source_text).resolve()
+        destination = (directory / destination_text).resolve()
+
+        if not source.is_relative_to(directory):
+            raise ValueError(
+                "receipt source resolves outside directory."
+            )
+
+        if not destination.is_relative_to(directory):
+            raise ValueError(
+                "receipt destination resolves outside directory."
+            )
+
+        expected_sha256 = move.get("sha256")
+
+        if expected_sha256 is not None:
+            if (
+                not isinstance(expected_sha256, str)
+                or len(expected_sha256) != 64
+                or any(
+                    character not in "0123456789abcdef"
+                    for character in expected_sha256
+                )
+            ):
+                raise ValueError(
+                    "receipt SHA-256 must be 64 lowercase "
+                    "hexadecimal characters."
+                )
+
+        source_exists = source.is_file()
+        destination_exists = destination.is_file()
+
+        if source_exists != destination_exists:
+            current_path = (
+                source
+                if source_exists
+                else destination
+            )
+
+            if (
+                expected_sha256 is not None
+                and file_sha256(current_path) != expected_sha256
+            ):
+                move_status = "changed"
+                counts["problems"] += 1
+            elif source_exists:
+                move_status = "pending"
+                counts["pending"] += 1
+            else:
+                move_status = "completed"
+                counts["completed"] += 1
+        else:
+            move_status = (
+                "collision"
+                if source_exists and destination_exists
+                else "missing"
+            )
+            counts["problems"] += 1
+
+        move_reports.append(
+            {
+                "source": source_text,
+                "destination": destination_text,
+                "status": move_status,
+            }
+        )
+
+    if counts["problems"]:
+        overall_status = "problem"
+    elif counts["pending"] and counts["completed"]:
+        overall_status = "partial"
+    elif counts["completed"] or not move_reports:
+        overall_status = "completed"
+    else:
+        overall_status = "pending"
+
+    return {
+        "status": overall_status,
+        "directory": str(directory),
+        "moves": move_reports,
+        "counts": counts,
+    }
+
 def plan_undo_moves(
     receipt: dict,
     directory: Path | None = None,

@@ -28,6 +28,7 @@ This command-line program organizes files into folders based on file type. It pr
 9. ✅ Add JSON move receipts and preview-first, collision-safe undo.
 10. ✅ Add explicit, safe undo support for relocated directories.
 11. ✅ Add collision-safe recovery after unexpected move failures.
+12. ✅ Add read-only receipt status reporting for completed, pending, partial, and problematic operations.
 
 ## Safety Rules
 
@@ -35,6 +36,7 @@ This command-line program organizes files into folders based on file type. It pr
 - Never overwrite an existing file.
 - Ignore directories and process files only.
 - Preview actions before applying them.
+- Inspect receipt state without changing files.
 - Attempt rollback after a later filesystem failure without overwriting new files.
 - Skip existing category folders during recursive scans.
 - Test with disposable sample files first.
@@ -46,7 +48,7 @@ This command-line program organizes files into folders based on file type. It pr
 
 ## Current Verified Status
 
-All eleven milestones are complete, with 48 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, atomic collision safety, and collision-safe recovery from unexpected move failures.
+All twelve milestones are complete, with 54 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, atomic collision safety, collision-safe recovery from unexpected move failures, and read-only receipt state reporting.
 
 ## Preview Changes
 
@@ -103,6 +105,20 @@ python3 main.py /path/to/test-directory --recursive --apply --receipt move-recei
 ```
 
 The receipt stores portable relative source and destination paths, a SHA-256 fingerprint of each file, and the category folders created by the operation. An existing receipt is never overwritten, and `--receipt` requires explicit `--apply` approval. The complete receipt is written before movement begins; if receipt writing fails, no files are moved.
+
+## Inspect a Move Receipt
+
+Check an operation without changing any files:
+
+```bash
+python3 main.py --receipt-status move-receipt.json
+```
+
+The JSON report classifies each move as `pending`, `completed`, `changed`, `collision`, or `missing`. The overall status is `completed`, `pending`, `partial`, or `problem`.
+
+A completed receipt exits with status `0`. Every other state exits with status `1`, making the command suitable for scripts and interruption checks.
+
+For a relocated directory, add `--undo-directory` with its current path. Status inspection is strictly read-only.
 
 ## Undo an Organized Move
 
