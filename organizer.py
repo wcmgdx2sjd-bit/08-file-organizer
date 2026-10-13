@@ -19,6 +19,16 @@ extension_categories = {
 
 
 
+
+def built_in_category_rules():
+    """Return built-in categories as stable JSON-ready lists."""
+    return {
+        category: sorted(extensions)
+        for category, extensions in extension_categories.items()
+    }
+
+
+
 def normalize_category_rules(category_rules=None):
     """Validate and normalize custom category rules."""
     if category_rules is None:

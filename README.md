@@ -31,6 +31,7 @@ This command-line program organizes files into folders based on file type. It pr
 12. ✅ Add read-only receipt status reporting for completed, pending, partial, and problematic operations.
 13. ✅ Add validated JSON category rules that safely extend the built-in file types.
 14. ✅ Add a read-only command that prints an example custom-rules document.
+15. ✅ Add a read-only command that lists built-in categories and extensions.
 
 ## Safety Rules
 
@@ -51,7 +52,7 @@ This command-line program organizes files into folders based on file type. It pr
 
 ## Current Verified Status
 
-All fourteen milestones are complete, with 63 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, atomic collision safety, collision-safe recovery from unexpected move failures, read-only receipt state reporting, and validated custom category rules.
+All fifteen milestones are complete, with 65 automated tests. Reusable file operations live in `organizer.py`, while `main.py` remains a thin command-line interface. Coverage includes recursive discovery, category-folder skipping, explicit approval, portable JSON move receipts, SHA-256 content verification, preview-first undo, atomic collision safety, collision-safe recovery from unexpected move failures, read-only receipt state reporting, and validated custom category rules.
 
 ## Preview Changes
 
@@ -82,6 +83,16 @@ python3 main.py /path/to/test-directory --recursive --apply
 ```
 
 Each file is organized beside its current location. Existing category folders are skipped, and one collision blocks every planned move.
+
+## Inspect Built-In Categories
+
+```bash
+python3 main.py --list-categories
+```
+
+This prints stable, read-only JSON showing every built-in
+category and supported extension. It cannot be combined
+with organizing or undo options.
 
 ## Custom Category Rules
 

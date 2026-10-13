@@ -16,6 +16,7 @@ RULES_EXAMPLE = {
 
 from organizer import (
     build_move_receipt,
+    built_in_category_rules,
     create_category_folders,
     inspect_move_receipt,
     move_files,
@@ -66,6 +67,11 @@ def parse_args(arguments=None):
         help="Print an example custom-rules JSON document.",
     )
     parser.add_argument(
+        "--list-categories",
+        action="store_true",
+        help="Print built-in categories and file extensions.",
+    )
+    parser.add_argument(
         "--receipt",
         type=Path,
         help=(
@@ -100,6 +106,34 @@ def run(
     error_output=sys.stderr,
 ) -> int:
     """Preview planned moves or apply them with explicit approval."""
+    if arguments.list_categories:
+        if (
+            arguments.directory is not None
+            or arguments.apply
+            or arguments.recursive
+            or arguments.rules is not None
+            or arguments.rules_example
+            or arguments.receipt is not None
+            or arguments.undo is not None
+            or arguments.undo_directory is not None
+            or arguments.receipt_status is not None
+        ):
+            print(
+                "Error: --list-categories cannot be combined "
+                "with other options.",
+                file=error_output,
+            )
+            return 1
+
+        json.dump(
+            {"categories": built_in_category_rules()},
+            output,
+            indent=2,
+            sort_keys=True,
+        )
+        print(file=output)
+        return 0
+
     if arguments.rules_example:
         if (
             arguments.directory is not None

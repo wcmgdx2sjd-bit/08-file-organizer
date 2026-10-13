@@ -2943,5 +2943,104 @@ class FileOrganizerTests(unittest.TestCase):
             self.assertEqual(list(directory.iterdir()), [sentinel])
 
 
+    def test_cli_list_categories_prints_stable_json_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            sentinel = directory / "unchanged.txt"
+            sentinel.write_text("unchanged", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    "--list-categories",
+                ],
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            document = json.loads(result.stdout)
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stderr, "")
+            self.assertEqual(
+                document,
+                {
+                    "categories": {
+                        "Archives": [
+                            ".7z",
+                            ".gz",
+                            ".rar",
+                            ".tar",
+                            ".zip",
+                        ],
+                        "Audio": [
+                            ".flac",
+                            ".m4a",
+                            ".mp3",
+                            ".wav",
+                        ],
+                        "Documents": [
+                            ".doc",
+                            ".docx",
+                            ".pdf",
+                            ".txt",
+                        ],
+                        "Images": [
+                            ".gif",
+                            ".jpeg",
+                            ".jpg",
+                            ".png",
+                        ],
+                        "Video": [
+                            ".avi",
+                            ".mkv",
+                            ".mov",
+                            ".mp4",
+                        ],
+                    }
+                },
+            )
+            self.assertEqual(
+                sentinel.read_text(encoding="utf-8"),
+                "unchanged",
+            )
+            self.assertEqual(list(directory.iterdir()), [sentinel])
+
+
+    def test_cli_list_categories_rejects_other_options_without_changes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            report = directory / "report.pdf"
+            report.write_text("report", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parents[1] / "main.py"),
+                    str(directory),
+                    "--list-categories",
+                    "--apply",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.stdout, "")
+            self.assertEqual(
+                result.stderr,
+                (
+                    "Error: --list-categories cannot be combined "
+                    "with other options.\n"
+                ),
+            )
+            self.assertTrue(report.is_file())
+            self.assertFalse((directory / "Documents").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
